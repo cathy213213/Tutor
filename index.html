@@ -175,6 +175,10 @@
     <p class="encourage">希望孩子的數學能夠越來越穩定進步💪🏻讓我們一起努力吧🌷</p>
   </header>
 
+  <div id="overviewRow" style="display:none;margin-bottom:16px;">
+    <button class="add-trigger" id="overviewBtn">📊 全部學生總覽</button>
+  </div>
+
   <div class="student-tabs" id="studentTabs"></div>
 
   <div id="storageWarning" style="display:none" class="storage-warning"></div>
@@ -227,7 +231,8 @@ let state = {
   formOpen: false,
   editingLessonId: null,
   editingStudent: false,
-  loaded: false
+  loaded: false,
+  showOverview: false
 };
 
 const dayNames = ['週日','週一','週二','週三','週四','週五','週六'];
@@ -412,6 +417,101 @@ function scheduledDatesInMonth(sid, year, month){
   const set = new Set();
   state.schedules.forEach(s=>{ if(s.studentId===sid && s.date.startsWith(prefix)) set.add(s.date); });
   return set;
+}
+
+/* ---------- overview: all students combined ---------- */
+function allStudentsMonthSummary(year, month){
+  const prefix = `${year}-${pad(month+1)}-`;
+  return state.students.map(s=>{
+    const sched = state.schedules.filter(x=>x.studentId===s.id && x.date.startsWith(prefix));
+    const hours = sched.reduce((sum,sc)=> sum + (sc.hours||0), 0);
+    const fee = s.rate ? Math.round(hours * s.rate) : null;
+    return { id: s.id, name: s.name, hours, fee, count: sched.length };
+  });
+}
+function combinedOccurrencesForDate(dateKey){
+  const list = [];
+  state.students.forEach(s=>{
+    occurrencesForDate(s.id, dateKey).forEach(o=> list.push({ studentName: s.name, time: o.time }));
+  });
+  return list.sort((a,b)=> a.time.localeCompare(b.time));
+}
+function combinedScheduledDatesInMonth(year, month){
+  const prefix = `${year}-${pad(month+1)}-`;
+  const map = new Map();
+  state.schedules.forEach(s=>{ if(s.date.startsWith(prefix)) map.set(s.date, (map.get(s.date)||0)+1); });
+  return map;
+}
+
+function renderOverview(){
+  const area = $('#mainArea');
+  const y = state.cursor.getFullYear(), m = state.cursor.getMonth();
+  const summary = allStudentsMonthSummary(y, m);
+  const totalHours = summary.reduce((sum,x)=> sum + x.hours, 0);
+  const totalFee = summary.reduce((sum,x)=> sum + (x.fee||0), 0);
+  const dateCounts = combinedScheduledDatesInMonth(y, m);
+
+  area.innerHTML = `
+    <div class="card">
+      <div class="cal-head">
+        <div class="cal-nav"><button id="ovPrev">‹</button></div>
+        <h2>${y} 年 ${m+1} 月・全部學生</h2>
+        <div class="cal-nav"><button id="ovNext">›</button></div>
+      </div>
+      <div class="grid7">${dowNames.map(d=>`<div class="dow">${d}</div>`).join('')}</div>
+      <div class="grid7" id="ovCalGrid"></div>
+      <div class="legend"><span><i style="background:var(--teal)"></i>當天有排課（點日期看名單）</span></div>
+    </div>
+
+    <div class="card">
+      <h3 class="section-title">每位學生本月時數與學費</h3>
+      ${summary.length ? summary.map(x=>`
+        <div class="sched-item">
+          <span class="sched-when">${escapeHtml(x.name)}　${x.hours ? x.hours.toFixed(1) : 0} 小時</span>
+          <span style="font-weight:700;color:var(--red)">${x.fee!==null ? '$'+x.fee.toLocaleString() : '—'}</span>
+        </div>`).join('') : `<div class="sched-empty">目前沒有學生資料</div>`}
+      ${summary.length ? `
+        <div class="sched-item" style="border-top:2px solid var(--ink);margin-top:6px;padding-top:12px;">
+          <span class="sched-when" style="font-weight:700;">總計</span>
+          <span style="font-weight:700;color:var(--red)">${totalHours.toFixed(1)} 小時・$${totalFee.toLocaleString()}</span>
+        </div>` : ''}
+    </div>
+  `;
+
+  $('#ovPrev').addEventListener('click', ()=>{ state.cursor = new Date(y, m-1, 1); renderOverview(); });
+  $('#ovNext').addEventListener('click', ()=>{ state.cursor = new Date(y, m+1, 1); renderOverview(); });
+
+  const firstDow = new Date(y, m, 1).getDay();
+  const daysInMonth = new Date(y, m+1, 0).getDate();
+  let html = '';
+  for(let i=0;i<firstDow;i++) html += `<div class="day pad"></div>`;
+  for(let d=1; d<=daysInMonth; d++){
+    const key = toKey(new Date(y, m, d));
+    const count = dateCounts.get(key) || 0;
+    const isToday = key === todayKey();
+    const classes = ['day'];
+    if(isToday) classes.push('today');
+    if(count>0) classes.push('has-schedule','clickable');
+    html += `<div class="${classes.join(' ')}" data-date="${key}">
+      <span>${d}</span>
+      ${count>0 ? `<span style="font-size:9px;color:var(--teal);font-weight:700;">${count}堂</span>` : ''}
+    </div>`;
+  }
+  $('#ovCalGrid').innerHTML = html;
+  $('#ovCalGrid').querySelectorAll('[data-date]').forEach(el=>{
+    el.addEventListener('click', ()=>{
+      const key = el.dataset.date;
+      const list = combinedOccurrencesForDate(key);
+      if(!list.length) return;
+      const [yy,mm,dd] = key.split('-');
+      showModal(`
+        <h3>${Number(mm)}/${Number(dd)} 的課</h3>
+        ${list.map(x=>`<div class="sched-item"><span class="sched-when">${x.time}　${escapeHtml(x.studentName)}</span></div>`).join('')}
+        <div class="modal-actions"><button class="btn btn-primary" id="m-close">關閉</button></div>
+      `);
+      $('#m-close').addEventListener('click', closeModal);
+    });
+  });
 }
 
 /* ---------- render: student tabs ---------- */
@@ -953,6 +1053,9 @@ function renderModeUI(){
   $('#btnTeacher').classList.toggle('active', state.viewMode==='teacher');
   $('#btnParent').classList.toggle('active', state.viewMode==='parent');
   $('#backupRow').style.display = (!state.lockedParent && state.viewMode==='teacher') ? 'flex' : 'none';
+  const showOv = !state.lockedParent && state.viewMode==='teacher';
+  $('#overviewRow').style.display = showOv ? 'block' : 'none';
+  if(showOv) $('#overviewBtn').textContent = state.showOverview ? '← 返回學生檢視' : '📊 全部學生總覽';
   const s = currentStudent();
   $('#subline').textContent = state.lockedParent
     ? (s ? `${s.name}的上課紀錄` : '找不到這位學生')
@@ -1019,12 +1122,19 @@ function confirmImport(data){
 function render(){
   if(!state.loaded) return;
   renderModeUI();
-  renderTabs();
-  renderMain();
+  const inOverview = !state.lockedParent && state.viewMode==='teacher' && state.showOverview;
+  $('#studentTabs').style.display = inOverview ? 'none' : '';
+  if(inOverview){
+    renderOverview();
+  } else {
+    renderTabs();
+    renderMain();
+  }
 }
 
 $('#btnTeacher').addEventListener('click', ()=>{ state.viewMode='teacher'; render(); });
-$('#btnParent').addEventListener('click', ()=>{ state.viewMode='parent'; render(); });
+$('#btnParent').addEventListener('click', ()=>{ state.viewMode='parent'; state.showOverview=false; render(); });
+$('#overviewBtn').addEventListener('click', ()=>{ state.showOverview = !state.showOverview; render(); });
 $('#exportBtn').addEventListener('click', exportBackup);
 $('#importBtn').addEventListener('click', ()=> $('#importFile').click());
 $('#importFile').addEventListener('change', handleImportFile);
