@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>家教紀錄本</title>
+<title>數學家教紀錄📝</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@500;700&family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
 <style>
@@ -37,6 +37,7 @@
   .eyebrow-row{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;}
   h1{font-family:'Noto Serif TC', serif;font-weight:700;font-size:28px;margin:0 0 4px;letter-spacing:.02em;}
   .sub{color:var(--ink-soft);font-size:14px;margin:0;}
+  .encourage{color:var(--teal);font-size:13px;margin:12px 0 0;line-height:1.6;}
 
   .toggle{display:flex;background:var(--card);border:1px solid var(--line);border-radius:999px;padding:3px;flex-shrink:0;}
   .toggle button{border:none;background:transparent;padding:7px 16px;border-radius:999px;font-family:'Noto Sans TC',sans-serif;font-size:13px;font-weight:500;color:var(--ink-soft);cursor:pointer;}
@@ -163,7 +164,7 @@
   <header>
     <div class="eyebrow-row">
       <div>
-        <h1>家教紀錄本</h1>
+        <h1>數學家教紀錄📝</h1>
         <p class="sub" id="subline">載入中…</p>
       </div>
       <div class="toggle" id="modeToggle">
@@ -171,6 +172,7 @@
         <button id="btnParent">家長檢視</button>
       </div>
     </div>
+    <p class="encourage">希望孩子的數學能夠越來越穩定進步💪🏻讓我們一起努力吧🌷</p>
   </header>
 
   <div class="student-tabs" id="studentTabs"></div>
@@ -215,7 +217,7 @@ const dowNames = ['日','一','二','三','四','五','六'];
 
 let state = {
   students: [],       // {id, name, rate}
-  lessons: [],         // {id, studentId, date, hours, topics, homework, note}
+  lessons: [],         // {id, studentId, date, hours, topics, homework}
   schedules: [],        // {id, studentId, mode:'weekly'|'once', dayOfWeek, date, hour, minute}
   currentStudentId: null,
   viewMode: 'teacher',
@@ -675,9 +677,8 @@ function renderMain(){
       <div class="fee-summary">
         <div class="fee-item"><div class="num">${monthSched.length}</div><div class="lbl">本月堂數</div></div>
         <div class="fee-item"><div class="num">${totalHours ? totalHours.toFixed(1) : 0}</div><div class="lbl">本月時數</div></div>
-        <div class="fee-item total"><div class="num">${fee!==null ? '$'+fee.toLocaleString() : '—'}</div><div class="lbl">本月應付月費</div></div>
+        <div class="fee-item total"><div class="num">${fee!==null ? '$'+fee.toLocaleString() : '—'}</div><div class="lbl">本月學費</div></div>
       </div>
-      <p style="font-size:11px;color:var(--ink-soft);margin:10px 0 0;">依照下方「排定時段」自動計算，不需要等上課紀錄填完</p>
     </div>
 
     <div class="card">
@@ -718,7 +719,7 @@ function renderMain(){
     ${state.viewMode==='parent' ? `<div class="card"><div class="parent-note">目前為家長檢視模式，僅顯示上課時間與紀錄，無法新增或修改。</div></div>` : ''}
 
     <div class="card">
-      <h3 class="section-title">${state.cursor.getMonth()+1} 月上課紀錄</h3>
+      <h3 class="section-title">${state.cursor.getMonth()+1} 月上課內容與作業</h3>
       <div id="entryList"></div>
       ${state.viewMode==='teacher' ? `<button class="add-trigger" id="addTrigger">＋ 新增上課紀錄</button>
       <div class="form-wrap" id="formWrap" style="display:none"></div>` : ''}
@@ -811,7 +812,6 @@ function renderList(sid){
         </div>
         ${fieldRow('上課內容', l.topics)}
         ${fieldRow('回家作業', l.homework)}
-        ${l.note ? fieldRow('給家長的話', l.note) : ''}
         ${state.viewMode==='teacher' ? `
           <div class="entry-actions">
             <button data-edit="${l.id}">編輯</button>
@@ -845,7 +845,6 @@ function openForm(id, prefillDate){
     </div>
     <div class="field"><label>上課內容</label><textarea id="f-topics" placeholder="今天教了哪些單元、觀念">${lesson?.topics || ''}</textarea></div>
     <div class="field"><label>回家作業</label><textarea id="f-homework" placeholder="指派給學生的練習">${lesson?.homework || ''}</textarea></div>
-    <div class="field"><label>給家長的話（選填）</label><textarea id="f-note" placeholder="學習狀況、需要留意的地方">${lesson?.note || ''}</textarea></div>
     <div class="form-actions">
       <button class="btn btn-primary" id="f-save">儲存</button>
       <button class="btn btn-ghost" id="f-cancel">取消</button>
@@ -873,7 +872,6 @@ async function saveForm(){
     hours: $('#f-hours').value ? Number($('#f-hours').value) : null,
     topics: $('#f-topics').value.trim(),
     homework: $('#f-homework').value.trim(),
-    note: $('#f-note').value.trim(),
   };
   const idx = state.lessons.findIndex(l=>l.id===data.id);
   if(idx>-1) state.lessons[idx] = data; else state.lessons.push(data);
