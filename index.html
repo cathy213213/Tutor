@@ -40,7 +40,7 @@
   .encourage{color:var(--teal);font-size:13px;margin:12px 0 0;line-height:1.6;}
 
   .toggle{display:flex;background:var(--card);border:1px solid var(--line);border-radius:999px;padding:3px;flex-shrink:0;}
-  .toggle button{border:none;background:transparent;padding:7px 16px;border-radius:999px;font-family:'Noto Sans TC',sans-serif;font-size:13px;font-weight:500;color:var(--ink-soft);cursor:pointer;}
+  .toggle button{border:none;background:transparent;padding:7px 12px;border-radius:999px;font-family:'Noto Sans TC',sans-serif;font-size:12.5px;font-weight:500;color:var(--ink-soft);cursor:pointer;white-space:nowrap;}
   .toggle button.active{background:var(--ink);color:#fff;}
 
   /* student tabs */
@@ -176,6 +176,7 @@
       <div class="toggle" id="modeToggle">
         <button id="btnTeacher" class="active">老師模式</button>
         <button id="btnParent">家長檢視</button>
+        <button id="btnStudent">學生檢視</button>
       </div>
     </div>
     <p class="encourage">希望孩子的數學能夠越來越穩定進步💪🏻讓我們一起努力吧🌷</p>
@@ -572,6 +573,11 @@ function renderStudentView(){
     hwMeta = `${Number(lm)}/${Number(ld)} 上課指派`;
   }
 
+  const y = state.cursor.getFullYear(), m = state.cursor.getMonth();
+  const monthSched = monthSchedulesFor(s.id);
+  const scheduledDates = scheduledDatesInMonth(s.id, y, m);
+  const lessonDates = new Set(studentLessons(s.id).map(l=>l.date));
+
   area.innerHTML = `
     <div class="card" style="text-align:center;">
       <div style="font-size:13px;color:var(--ink-soft);margin-bottom:4px;">${escapeHtml(s.name)} 同學</div>
@@ -586,7 +592,51 @@ function renderStudentView(){
       ${hwMeta ? `<div style="font-size:12px;color:var(--ink-soft);margin-bottom:8px;">${hwMeta}</div>` : ''}
       <div style="font-size:15px;line-height:1.8;white-space:pre-wrap;">${escapeHtml(hwText)}</div>
     </div>
+
+    <div class="card">
+      <div class="cal-head">
+        <div class="cal-nav"><button id="stuPrev">‹</button></div>
+        <h2>${y} 年 ${m+1} 月</h2>
+        <div class="cal-nav"><button id="stuNext">›</button></div>
+      </div>
+      <div class="grid7">${dowNames.map(d=>`<div class="dow">${d}</div>`).join('')}</div>
+      <div class="grid7" id="stuCalGrid"></div>
+      <div class="legend">
+        <span><i style="background:var(--red)"></i>已上課</span>
+        <span><i style="background:var(--teal)"></i>排定上課</span>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3 class="section-title">${m+1} 月上課時間</h3>
+      ${monthSched.length ? monthSched.map(sc=>{
+        const dow = new Date(sc.date+'T00:00:00').getDay();
+        const [yy,mm,dd] = sc.date.split('-');
+        return `<div class="sched-item"><span class="sched-when">${Number(mm)}/${Number(dd)}（${dayNames[dow]}）　${formatTime(sc.hour,sc.minute)}</span></div>`;
+      }).join('') : `<div class="sched-empty">這個月尚未排定上課時段</div>`}
+    </div>
   `;
+
+  $('#stuPrev').addEventListener('click', ()=>{ state.cursor = new Date(y, m-1, 1); renderStudentView(); });
+  $('#stuNext').addEventListener('click', ()=>{ state.cursor = new Date(y, m+1, 1); renderStudentView(); });
+
+  const firstDow = new Date(y, m, 1).getDay();
+  const daysInMonth = new Date(y, m+1, 0).getDate();
+  let calHtml = '';
+  for(let i=0;i<firstDow;i++) calHtml += `<div class="day pad"></div>`;
+  for(let d=1; d<=daysInMonth; d++){
+    const key = toKey(new Date(y, m, d));
+    const hasContent = lessonDates.has(key);
+    const hasSchedule = scheduledDates.has(key);
+    const isToday = key === todayKey();
+    const classes = ['day'];
+    if(isToday) classes.push('today');
+    if(hasContent) classes.push('has-lesson');
+    else if(hasSchedule) classes.push('has-schedule');
+    const dot = hasContent ? '<span class="dot"></span>' : (hasSchedule ? '<span class="dot dot-schedule"></span>' : '');
+    calHtml += `<div class="${classes.join(' ')}" data-date="${key}"><span>${d}</span>${dot}</div>`;
+  }
+  $('#stuCalGrid').innerHTML = calHtml;
 }
 
 function renderOverview(){
@@ -1271,6 +1321,7 @@ function renderModeUI(){
   toggle.style.display = locked ? 'none' : 'flex';
   $('#btnTeacher').classList.toggle('active', state.viewMode==='teacher');
   $('#btnParent').classList.toggle('active', state.viewMode==='parent');
+  $('#btnStudent').classList.toggle('active', state.viewMode==='student');
   $('#backupRow').style.display = (!locked && state.viewMode==='teacher') ? 'flex' : 'none';
   const showOv = !locked && state.viewMode==='teacher';
   $('#overviewRow').style.display = showOv ? 'block' : 'none';
@@ -1282,7 +1333,9 @@ function renderModeUI(){
       ? (s ? `${s.name} 同學專屬頁面` : '找不到這位學生')
       : (state.viewMode==='teacher'
         ? `共 ${state.students.length} 位學生・點選日曆日期即可新增或編輯`
-        : (s ? `目前檢視：${s.name}` : '請選擇學生'));
+        : state.viewMode==='parent'
+          ? (s ? `目前檢視：${s.name}` : '請選擇學生')
+          : (s ? `學生檢視預覽：${s.name}` : '請選擇學生'));
 }
 
 function exportBackup(){
@@ -1352,6 +1405,9 @@ function render(){
   $('#studentTabs').style.display = inOverview ? 'none' : '';
   if(inOverview){
     renderOverview();
+  } else if(!state.lockedParent && state.viewMode==='student'){
+    renderTabs();
+    renderStudentView();
   } else {
     renderTabs();
     renderMain();
@@ -1360,6 +1416,7 @@ function render(){
 
 $('#btnTeacher').addEventListener('click', ()=>{ state.viewMode='teacher'; render(); });
 $('#btnParent').addEventListener('click', ()=>{ state.viewMode='parent'; state.showOverview=false; render(); });
+$('#btnStudent').addEventListener('click', ()=>{ state.viewMode='student'; state.showOverview=false; render(); });
 $('#overviewBtn').addEventListener('click', ()=>{ state.showOverview = !state.showOverview; render(); });
 $('#exportBtn').addEventListener('click', exportBackup);
 $('#importBtn').addEventListener('click', ()=> $('#importFile').click());
