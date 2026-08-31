@@ -317,6 +317,19 @@ async function loadData(){
     state.schedules = [];
     state.payments = [];
   }
+  // migrate single flat rate into rateHistory
+  let studentsChanged = false;
+  state.students = state.students.map(s=>{
+    if(s.rateHistory === undefined){
+      studentsChanged = true;
+      const hist = (s.rate!==undefined && s.rate!==null) ? [{ id: uid(), month: '2000-01', rate: s.rate }] : [];
+      const { rate, ...rest } = s;
+      return { ...rest, rateHistory: hist };
+    }
+    return s;
+  });
+  if(studentsChanged) saveStudents();
+
   // migrate legacy records that stored duration in minutes to hours
   let migrated = false;
   state.lessons = state.lessons.map(l=>{
@@ -439,6 +452,18 @@ function scheduledDatesInMonth(sid, year, month){
 
 /* ---------- payment status ---------- */
 function monthKeyOf(year, month){ return `${year}-${pad(month+1)}`; }
+function rateForMonth(student, year, month){
+  const history = student.rateHistory || [];
+  if(!history.length) return null;
+  const target = monthKeyOf(year, month);
+  const sorted = [...history].sort((a,b)=> a.month.localeCompare(b.month));
+  let applicable = sorted[0].rate;
+  for(const r of sorted){
+    if(r.month <= target) applicable = r.rate;
+    else break;
+  }
+  return applicable;
+}
 function isPaidForMonth(sid, year, month){
   const mk = monthKeyOf(year, month);
   const rec = state.payments.find(p=> p.studentId===sid && p.month===mk);
@@ -459,7 +484,7 @@ function allStudentsMonthSummary(year, month){
   return state.students.map(s=>{
     const sched = state.schedules.filter(x=>x.studentId===s.id && x.date.startsWith(prefix));
     const hours = sched.reduce((sum,sc)=> sum + (sc.hours||0), 0);
-    const fee = s.rate ? Math.round(hours * s.rate) : null;
+    const fee = rateForMonth(s, year, month) ? Math.round(hours * rateForMonth(s, year, month)) : null;
     return { id: s.id, name: s.name, hours, fee, count: sched.length };
   });
 }
@@ -601,7 +626,9 @@ function addStudentPrompt(){
     if(!name){ $('#m-name').focus(); return; }
     const rateVal = $('#m-rate').value;
     const rate = rateVal && !isNaN(Number(rateVal)) ? Number(rateVal) : null;
-    const student = { id: uid(), name, rate };
+    const now = new Date();
+    const rateHistory = rate!==null ? [{ id: uid(), month: monthKeyOf(now.getFullYear(), now.getMonth()), rate }] : [];
+    const student = { id: uid(), name, rateHistory };
     state.students.push(student);
     state.currentStudentId = student.id;
     closeModal();
@@ -617,7 +644,6 @@ function editStudent(){
   showModal(`
     <h3>編輯學生</h3>
     <div class="field"><label>學生姓名</label><input type="text" id="m-name" value="${escapeHtml(s.name)}"></div>
-    <div class="field"><label>時薪（元／小時，可留空）</label><input type="number" id="m-rate" value="${s.rate ?? ''}"></div>
     <div class="modal-actions">
       <button class="btn btn-ghost" id="m-cancel">取消</button>
       <button class="btn btn-primary" id="m-save">儲存</button>
@@ -627,9 +653,7 @@ function editStudent(){
   $('#m-save').addEventListener('click', async ()=>{
     const name = $('#m-name').value.trim();
     if(!name){ $('#m-name').focus(); return; }
-    const rateVal = $('#m-rate').value;
     s.name = name;
-    s.rate = rateVal && !isNaN(Number(rateVal)) ? Number(rateVal) : null;
     closeModal();
     await saveStudents();
     render();
@@ -657,6 +681,48 @@ function deleteStudent(){
     closeModal();
     await Promise.all([saveStudents(), saveLessons(), saveSchedules()]);
     render();
+  });
+}
+
+function manageRates(sid){
+  const s = state.students.find(x=>x.id===sid);
+  if(!s) return;
+  const now = new Date();
+  const history = [...(s.rateHistory||[])].sort((a,b)=> b.month.localeCompare(a.month));
+  showModal(`
+    <h3>時薪調整紀錄</h3>
+    ${history.length ? history.map(r=>{
+      const [ry,rm] = r.month.split('-');
+      return `<div class="sched-item">
+        <span class="sched-when">${ry}年${Number(rm)}月起　$${r.rate}/hr</span>
+        <button data-delrate="${r.id}" style="color:var(--red)">刪除</button>
+      </div>`;
+    }).join('') : `<div class="sched-empty">尚未設定時薪</div>`}
+    <div class="field" style="margin-top:14px;"><label>新增調整：生效月份</label><input type="month" id="m-month" value="${monthKeyOf(now.getFullYear(), now.getMonth())}"></div>
+    <div class="field"><label>新時薪（元／小時）</label><input type="number" id="m-rate" placeholder="例如 850"></div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" id="m-close">關閉</button>
+      <button class="btn btn-primary" id="m-add">新增調整</button>
+    </div>
+  `);
+  $('#m-close').addEventListener('click', closeModal);
+  $('#m-add').addEventListener('click', async ()=>{
+    const month = $('#m-month').value;
+    const rateVal = $('#m-rate').value;
+    if(!month || !rateVal || isNaN(Number(rateVal))) return;
+    s.rateHistory = s.rateHistory || [];
+    s.rateHistory.push({ id: uid(), month, rate: Number(rateVal) });
+    closeModal();
+    await saveStudents();
+    render();
+  });
+  document.querySelectorAll('[data-delrate]').forEach(btn=>{
+    btn.addEventListener('click', async ()=>{
+      s.rateHistory = (s.rateHistory||[]).filter(r=>r.id!==btn.dataset.delrate);
+      closeModal();
+      await saveStudents();
+      render();
+    });
   });
 }
 
@@ -795,8 +861,9 @@ function renderMain(){
   const monthList = monthLessonsFor(s.id);
   const monthSched = monthSchedulesFor(s.id);
   const totalHours = monthSched.reduce((sum,sc)=> sum + (sc.hours||0), 0);
-  const fee = s.rate ? Math.round(totalHours * s.rate) : null;
   const cy = state.cursor.getFullYear(), cm = state.cursor.getMonth();
+  const rate = rateForMonth(s, cy, cm);
+  const fee = rate ? Math.round(totalHours * rate) : null;
   const paid = isPaidForMonth(s.id, cy, cm);
 
   area.innerHTML = `
@@ -804,11 +871,12 @@ function renderMain(){
       <div class="student-head">
         <div class="student-name-row">
           <span class="student-name">${escapeHtml(s.name)}</span>
-          <span class="student-rate">${s.rate ? `$${s.rate}/hr` : '尚未設定時薪'}</span>
+          <span class="student-rate">${rate ? `本月 $${rate}/hr` : '尚未設定時薪'}</span>
         </div>
         ${state.viewMode==='teacher' ? `
           <div class="student-actions">
             <button id="linkBtn">家長專屬連結</button>
+            <button id="rateBtn">調整時薪</button>
             <button id="editStudentBtn">編輯學生</button>
             <button id="delStudentBtn" class="danger">刪除學生</button>
           </div>` : ''}
@@ -868,6 +936,7 @@ function renderMain(){
 
   if(state.viewMode==='teacher'){
     $('#linkBtn').addEventListener('click', ()=> copyParentLink(s.id));
+    $('#rateBtn').addEventListener('click', ()=> manageRates(s.id));
     $('#payBadge').addEventListener('click', ()=> togglePayment(s.id, cy, cm));
     $('#editStudentBtn').addEventListener('click', editStudent);
     $('#delStudentBtn').addEventListener('click', deleteStudent);
