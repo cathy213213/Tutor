@@ -60,7 +60,7 @@
   .student-name-row{display:flex;align-items:baseline;gap:10px;}
   .student-name{font-family:'Noto Serif TC',serif;font-weight:700;font-size:19px;}
   .student-rate{font-size:12px;color:var(--ink-soft);}
-  .student-actions{display:flex;gap:12px;}
+  .student-actions{display:flex;gap:10px 12px;flex-wrap:wrap;}
   .student-actions button{border:none;background:none;font-size:12px;color:var(--ink-soft);cursor:pointer;text-decoration:underline;padding:0;}
   .student-actions button.danger{color:var(--red);}
 
@@ -230,9 +230,11 @@ let state = {
   lessons: [],         // {id, studentId, date, hours, topics, homework}
   schedules: [],        // {id, studentId, mode:'weekly'|'once', dayOfWeek, date, hour, minute}
   payments: [],         // {id, studentId, month:'YYYY-MM', paid:true}
+  summaries: [],        // {id, studentId, month:'YYYY-MM', text}
   currentStudentId: null,
   viewMode: 'teacher',
-  lockedParent: false,   // true when opened via a student's dedicated link
+  lockedParent: false,   // true when opened via a student's parent link
+  lockedStudent: false,  // true when opened via a student's own link
   cursor: new Date(),
   selectedDate: null,
   formOpen: false,
@@ -245,11 +247,15 @@ let state = {
 const dayNames = ['週日','週一','週二','週三','週四','週五','週六'];
 
 function applyRouteFromHash(){
-  const match = window.location.hash.match(/^#\/parent\/(.+)$/);
-  if(match){
+  const parentMatch = window.location.hash.match(/^#\/parent\/(.+)$/);
+  const studentMatch = window.location.hash.match(/^#\/student\/(.+)$/);
+  if(parentMatch){
     state.lockedParent = true;
     state.viewMode = 'parent';
-    state.currentStudentId = decodeURIComponent(match[1]);
+    state.currentStudentId = decodeURIComponent(parentMatch[1]);
+  } else if(studentMatch){
+    state.lockedStudent = true;
+    state.currentStudentId = decodeURIComponent(studentMatch[1]);
   }
 }
 
@@ -300,22 +306,25 @@ async function loadData(){
     return;
   }
   try{
-    const [sSnap, lSnap, schSnap, paySnap] = await Promise.all([
+    const [sSnap, lSnap, schSnap, paySnap, sumSnap] = await Promise.all([
       getDoc(doc(db,'tutorlog','students')),
       getDoc(doc(db,'tutorlog','lessons')),
       getDoc(doc(db,'tutorlog','schedules')),
-      getDoc(doc(db,'tutorlog','payments'))
+      getDoc(doc(db,'tutorlog','payments')),
+      getDoc(doc(db,'tutorlog','summaries'))
     ]);
     state.students = sSnap.exists() ? (sSnap.data().list || []) : [];
     state.lessons = lSnap.exists() ? (lSnap.data().list || []) : [];
     state.schedules = schSnap.exists() ? (schSnap.data().list || []) : [];
     state.payments = paySnap.exists() ? (paySnap.data().list || []) : [];
+    state.summaries = sumSnap.exists() ? (sumSnap.data().list || []) : [];
   }catch(e){
     showPersistentError('讀取資料時發生問題：'+(e?.message||e));
     state.students = [];
     state.lessons = [];
     state.schedules = [];
     state.payments = [];
+    state.summaries = [];
   }
   // migrate single flat rate into rateHistory
   let studentsChanged = false;
@@ -370,7 +379,7 @@ async function loadData(){
   if(schedChanged) saveSchedules();
 
   applyRouteFromHash();
-  if(state.students.length && !state.currentStudentId && !state.lockedParent){
+  if(state.students.length && !state.currentStudentId && !state.lockedParent && !state.lockedStudent){
     state.currentStudentId = state.students[0].id;
   }
   state.loaded = true;
@@ -396,6 +405,10 @@ function attachLiveListeners(){
     state.payments = snap.exists() ? (snap.data().list || []) : [];
     if(state.loaded) render();
   }, e=> showPersistentError('即時同步收款狀態時發生問題：'+(e?.message||e)));
+  onSnapshot(doc(db,'tutorlog','summaries'), snap=>{
+    state.summaries = snap.exists() ? (snap.data().list || []) : [];
+    if(state.loaded) render();
+  }, e=> showPersistentError('即時同步學習摘要時發生問題：'+(e?.message||e)));
 }
 
 async function saveStudents(){
@@ -413,6 +426,10 @@ async function saveSchedules(){
 async function savePayments(){
   try{ await setDoc(doc(db,'tutorlog','payments'), { list: state.payments }); }
   catch(e){ showPersistentError('儲存收款狀態時發生問題：'+(e?.message||JSON.stringify(e))); }
+}
+async function saveSummaries(){
+  try{ await setDoc(doc(db,'tutorlog','summaries'), { list: state.summaries }); }
+  catch(e){ showPersistentError('儲存學習摘要時發生問題：'+(e?.message||JSON.stringify(e))); }
 }
 
 function currentStudent(){ return state.students.find(s=>s.id===state.currentStudentId) || null; }
@@ -478,6 +495,20 @@ async function togglePayment(sid, year, month){
   await savePayments();
 }
 
+/* ---------- monthly learning summary ---------- */
+function getSummaryText(sid, year, month){
+  const mk = monthKeyOf(year, month);
+  const rec = state.summaries.find(x=> x.studentId===sid && x.month===mk);
+  return rec ? rec.text : '';
+}
+async function saveSummaryText(sid, year, month, text){
+  const mk = monthKeyOf(year, month);
+  const rec = state.summaries.find(x=> x.studentId===sid && x.month===mk);
+  if(rec){ rec.text = text; }
+  else { state.summaries.push({ id: uid(), studentId: sid, month: mk, text }); }
+  await saveSummaries();
+}
+
 /* ---------- overview: all students combined ---------- */
 function allStudentsMonthSummary(year, month){
   const prefix = `${year}-${pad(month+1)}-`;
@@ -500,6 +531,62 @@ function combinedScheduledDatesInMonth(year, month){
   const map = new Map();
   state.schedules.forEach(s=>{ if(s.date.startsWith(prefix)) map.set(s.date, (map.get(s.date)||0)+1); });
   return map;
+}
+
+/* ---------- student-facing view (next class + homework only, no money) ---------- */
+function nextOccurrenceFor(sid){
+  const todayStr = todayKey();
+  const now = new Date();
+  const nowMinutes = now.getHours()*60 + now.getMinutes();
+  return state.schedules
+    .filter(s=> s.studentId===sid)
+    .filter(s=> s.date > todayStr || (s.date === todayStr && (s.hour*60+s.minute) >= nowMinutes))
+    .sort((a,b)=> a.date.localeCompare(b.date) || (a.hour*60+a.minute)-(b.hour*60+b.minute))[0] || null;
+}
+function latestLessonFor(sid){
+  const list = studentLessons(sid);
+  return list.length ? list[list.length-1] : null;
+}
+function renderStudentView(){
+  const area = $('#mainArea');
+  const s = state.students.find(x=>x.id===state.currentStudentId);
+  if(!s){
+    area.innerHTML = `<div class="card"><div class="empty-state">找不到這位學生的資料，請確認連結是否正確，或聯絡老師。</div></div>`;
+    return;
+  }
+  const next = nextOccurrenceFor(s.id);
+  const latest = latestLessonFor(s.id);
+
+  let nextText = '目前沒有排定的課程';
+  if(next){
+    const [ny,nm,nd] = next.date.split('-');
+    const dow = new Date(next.date+'T00:00:00').getDay();
+    nextText = `${Number(nm)}/${Number(nd)}（${dayNames[dow]}）　${formatTime(next.hour,next.minute)}`;
+  }
+
+  let hwText = '目前沒有指派作業';
+  let hwMeta = '';
+  if(latest && latest.homework && latest.homework.trim()){
+    hwText = latest.homework;
+    const [ly,lm,ld] = latest.date.split('-');
+    hwMeta = `${Number(lm)}/${Number(ld)} 上課指派`;
+  }
+
+  area.innerHTML = `
+    <div class="card" style="text-align:center;">
+      <div style="font-size:13px;color:var(--ink-soft);margin-bottom:4px;">${escapeHtml(s.name)} 同學</div>
+      <div style="font-size:18px;font-weight:700;">加油！繼續保持 💪</div>
+    </div>
+    <div class="card">
+      <h3 class="section-title">📅 下一次上課時間</h3>
+      <div style="font-size:20px;font-weight:700;color:var(--teal);">${nextText}</div>
+    </div>
+    <div class="card">
+      <h3 class="section-title">📝 本次作業</h3>
+      ${hwMeta ? `<div style="font-size:12px;color:var(--ink-soft);margin-bottom:8px;">${hwMeta}</div>` : ''}
+      <div style="font-size:15px;line-height:1.8;white-space:pre-wrap;">${escapeHtml(hwText)}</div>
+    </div>
+  `;
 }
 
 function renderOverview(){
@@ -865,6 +952,7 @@ function renderMain(){
   const rate = rateForMonth(s, cy, cm);
   const fee = rate ? Math.round(totalHours * rate) : null;
   const paid = isPaidForMonth(s.id, cy, cm);
+  const summaryText = getSummaryText(s.id, cy, cm);
 
   area.innerHTML = `
     <div class="card">
@@ -876,6 +964,7 @@ function renderMain(){
         ${state.viewMode==='teacher' ? `
           <div class="student-actions">
             <button id="linkBtn">家長專屬連結</button>
+            <button id="studentLinkBtn">學生專屬連結</button>
             <button id="rateBtn">調整時薪</button>
             <button id="editStudentBtn">編輯學生</button>
             <button id="delStudentBtn" class="danger">刪除學生</button>
@@ -932,16 +1021,32 @@ function renderMain(){
       ${state.viewMode==='teacher' ? `<button class="add-trigger" id="addTrigger">＋ 新增上課紀錄</button>
       <div class="form-wrap" id="formWrap" style="display:none"></div>` : ''}
     </div>
+
+    <div class="card">
+      <h3 class="section-title">📌 本月學習摘要</h3>
+      ${state.viewMode==='teacher' ? `
+        <textarea id="summaryText" placeholder="這個月的學習狀況、進度、需要加強的地方…" style="width:100%;min-height:100px;font-family:'Noto Sans TC',sans-serif;font-size:14px;color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:10px;resize:vertical;">${summaryText}</textarea>
+        <div style="margin-top:10px;"><button class="btn btn-primary" id="saveSummaryBtn">儲存摘要</button></div>
+      ` : `
+        <div style="font-size:14px;line-height:1.8;">${summaryText.trim() ? escapeHtml(summaryText).replace(/\n/g,'<br>') : '<span style="color:var(--ink-soft)">老師尚未填寫本月摘要</span>'}</div>
+      `}
+    </div>
   `;
 
   if(state.viewMode==='teacher'){
     $('#linkBtn').addEventListener('click', ()=> copyParentLink(s.id));
+    $('#studentLinkBtn').addEventListener('click', ()=> copyStudentLink(s.id));
     $('#rateBtn').addEventListener('click', ()=> manageRates(s.id));
     $('#payBadge').addEventListener('click', ()=> togglePayment(s.id, cy, cm));
     $('#editStudentBtn').addEventListener('click', editStudent);
     $('#delStudentBtn').addEventListener('click', deleteStudent);
     $('#addTrigger').addEventListener('click', ()=> openForm(null, toKey(new Date())));
     $('#addSchedBtn').addEventListener('click', ()=> addSchedule(s.id));
+    $('#saveSummaryBtn').addEventListener('click', async ()=>{
+      const text = $('#summaryText').value.trim();
+      await saveSummaryText(s.id, cy, cm, text);
+      showToast('已儲存本月摘要');
+    });
     area.querySelectorAll('[data-move]').forEach(btn=> btn.addEventListener('click', ()=> moveSchedule(btn.dataset.move)));
     area.querySelectorAll('[data-delsched]').forEach(btn=> btn.addEventListener('click', ()=> deleteSchedule(btn.dataset.delsched)));
   }
@@ -1117,26 +1222,27 @@ function getBaseUrl(){
   return null;
 }
 
-async function copyParentLink(id){
+async function copyRoleLink(id, role, btnId){
   const base = getBaseUrl();
+  const label = role==='parent' ? '家長專屬連結' : '學生專屬連結';
   if(!base){
     showModal(`
       <h3>目前無法產生連結</h3>
-      <p>這個畫面現在是 Claude 對話裡的預覽模式，沒有真正的網址，沒辦法做出家長打得開的連結。請先把這個頁面發布到一個真正的網址（用 Claude 的分享功能，或放到 GitHub Pages 之類的地方），再從那個網址打開這個工具，這個按鈕才會正常運作。</p>
+      <p>這個畫面現在是 Claude 對話裡的預覽模式，沒有真正的網址，沒辦法做出打得開的連結。請先把這個頁面發布到一個真正的網址（用 Claude 的分享功能，或放到 GitHub Pages 之類的地方），再從那個網址打開這個工具，這個按鈕才會正常運作。</p>
       <div class="modal-actions"><button class="btn btn-primary" id="m-close">了解</button></div>
     `);
     $('#m-close').addEventListener('click', closeModal);
     return;
   }
-  const url = `${base}#/parent/${encodeURIComponent(id)}`;
+  const url = `${base}#/${role}/${encodeURIComponent(id)}`;
   try{
     await navigator.clipboard.writeText(url);
-    flashLinkCopied();
-    showToast('連結已複製');
+    flashLinkCopied(btnId);
+    showToast(label+'已複製');
   }catch(e){
     showModal(`
-      <h3>家長專屬連結</h3>
-      <p>請手動選取並複製以下網址，傳給家長：</p>
+      <h3>${label}</h3>
+      <p>請手動選取並複製以下網址：</p>
       <div class="link-box"><input type="text" id="m-link" value="${url}" readonly></div>
       <div class="modal-actions">
         <button class="btn btn-primary" id="m-close">關閉</button>
@@ -1148,30 +1254,35 @@ async function copyParentLink(id){
     $('#m-close').addEventListener('click', closeModal);
   }
 }
+function copyParentLink(id){ return copyRoleLink(id, 'parent', 'linkBtn'); }
+function copyStudentLink(id){ return copyRoleLink(id, 'student', 'studentLinkBtn'); }
 
-function flashLinkCopied(){
-  const btn = $('#linkBtn');
+function flashLinkCopied(btnId){
+  const btn = $('#'+(btnId||'linkBtn'));
   if(!btn) return;
   const original = btn.textContent;
   btn.textContent = '已複製連結！';
-  setTimeout(()=>{ const b = $('#linkBtn'); if(b) b.textContent = original; }, 1600);
+  setTimeout(()=>{ if(btn) btn.textContent = original; }, 1600);
 }
 
 function renderModeUI(){
   const toggle = $('#modeToggle');
-  toggle.style.display = state.lockedParent ? 'none' : 'flex';
+  const locked = state.lockedParent || state.lockedStudent;
+  toggle.style.display = locked ? 'none' : 'flex';
   $('#btnTeacher').classList.toggle('active', state.viewMode==='teacher');
   $('#btnParent').classList.toggle('active', state.viewMode==='parent');
-  $('#backupRow').style.display = (!state.lockedParent && state.viewMode==='teacher') ? 'flex' : 'none';
-  const showOv = !state.lockedParent && state.viewMode==='teacher';
+  $('#backupRow').style.display = (!locked && state.viewMode==='teacher') ? 'flex' : 'none';
+  const showOv = !locked && state.viewMode==='teacher';
   $('#overviewRow').style.display = showOv ? 'block' : 'none';
   if(showOv) $('#overviewBtn').textContent = state.showOverview ? '← 返回學生檢視' : '📊 全部學生總覽';
   const s = currentStudent();
   $('#subline').textContent = state.lockedParent
     ? (s ? `${s.name}的上課紀錄` : '找不到這位學生')
-    : (state.viewMode==='teacher'
-      ? `共 ${state.students.length} 位學生・點選日曆日期即可新增或編輯`
-      : (s ? `目前檢視：${s.name}` : '請選擇學生'));
+    : state.lockedStudent
+      ? (s ? `${s.name} 同學專屬頁面` : '找不到這位學生')
+      : (state.viewMode==='teacher'
+        ? `共 ${state.students.length} 位學生・點選日曆日期即可新增或編輯`
+        : (s ? `目前檢視：${s.name}` : '請選擇學生'));
 }
 
 function exportBackup(){
@@ -1232,6 +1343,11 @@ function confirmImport(data){
 function render(){
   if(!state.loaded) return;
   renderModeUI();
+  if(state.lockedStudent){
+    $('#studentTabs').style.display = 'none';
+    renderStudentView();
+    return;
+  }
   const inOverview = !state.lockedParent && state.viewMode==='teacher' && state.showOverview;
   $('#studentTabs').style.display = inOverview ? 'none' : '';
   if(inOverview){
