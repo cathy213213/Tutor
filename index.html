@@ -69,6 +69,12 @@
   .fee-item .lbl{font-size:11px;color:var(--ink-soft);margin-top:2px;}
   .fee-item.total .num{color:var(--red);}
 
+  .pay-badge{display:inline-flex;align-items:center;gap:6px;padding:8px 16px;border-radius:999px;font-size:14px;font-weight:700;margin-top:14px;border:none;font-family:'Noto Sans TC',sans-serif;}
+  .pay-badge.paid{background:var(--teal-soft);color:var(--teal);}
+  .pay-badge.unpaid{background:var(--red-soft);color:var(--red);}
+  .pay-badge.clickable{cursor:pointer;}
+  .pay-dot{font-size:12px;margin-left:6px;}
+
   .cal-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;}
   .cal-head h2{font-family:'Noto Serif TC',serif;font-size:18px;margin:0;font-weight:700;}
   .cal-nav{display:flex;gap:6px;}
@@ -223,6 +229,7 @@ let state = {
   students: [],       // {id, name, rate}
   lessons: [],         // {id, studentId, date, hours, topics, homework}
   schedules: [],        // {id, studentId, mode:'weekly'|'once', dayOfWeek, date, hour, minute}
+  payments: [],         // {id, studentId, month:'YYYY-MM', paid:true}
   currentStudentId: null,
   viewMode: 'teacher',
   lockedParent: false,   // true when opened via a student's dedicated link
@@ -293,19 +300,22 @@ async function loadData(){
     return;
   }
   try{
-    const [sSnap, lSnap, schSnap] = await Promise.all([
+    const [sSnap, lSnap, schSnap, paySnap] = await Promise.all([
       getDoc(doc(db,'tutorlog','students')),
       getDoc(doc(db,'tutorlog','lessons')),
-      getDoc(doc(db,'tutorlog','schedules'))
+      getDoc(doc(db,'tutorlog','schedules')),
+      getDoc(doc(db,'tutorlog','payments'))
     ]);
     state.students = sSnap.exists() ? (sSnap.data().list || []) : [];
     state.lessons = lSnap.exists() ? (lSnap.data().list || []) : [];
     state.schedules = schSnap.exists() ? (schSnap.data().list || []) : [];
+    state.payments = paySnap.exists() ? (paySnap.data().list || []) : [];
   }catch(e){
     showPersistentError('讀取資料時發生問題：'+(e?.message||e));
     state.students = [];
     state.lessons = [];
     state.schedules = [];
+    state.payments = [];
   }
   // migrate legacy records that stored duration in minutes to hours
   let migrated = false;
@@ -369,6 +379,10 @@ function attachLiveListeners(){
     state.schedules = snap.exists() ? (snap.data().list || []) : [];
     if(state.loaded) render();
   }, e=> showPersistentError('即時同步課表時發生問題：'+(e?.message||e)));
+  onSnapshot(doc(db,'tutorlog','payments'), snap=>{
+    state.payments = snap.exists() ? (snap.data().list || []) : [];
+    if(state.loaded) render();
+  }, e=> showPersistentError('即時同步收款狀態時發生問題：'+(e?.message||e)));
 }
 
 async function saveStudents(){
@@ -382,6 +396,10 @@ async function saveLessons(){
 async function saveSchedules(){
   try{ await setDoc(doc(db,'tutorlog','schedules'), { list: state.schedules }); }
   catch(e){ showPersistentError('儲存課表時發生問題：'+(e?.message||JSON.stringify(e))); }
+}
+async function savePayments(){
+  try{ await setDoc(doc(db,'tutorlog','payments'), { list: state.payments }); }
+  catch(e){ showPersistentError('儲存收款狀態時發生問題：'+(e?.message||JSON.stringify(e))); }
 }
 
 function currentStudent(){ return state.students.find(s=>s.id===state.currentStudentId) || null; }
@@ -417,6 +435,22 @@ function scheduledDatesInMonth(sid, year, month){
   const set = new Set();
   state.schedules.forEach(s=>{ if(s.studentId===sid && s.date.startsWith(prefix)) set.add(s.date); });
   return set;
+}
+
+/* ---------- payment status ---------- */
+function monthKeyOf(year, month){ return `${year}-${pad(month+1)}`; }
+function isPaidForMonth(sid, year, month){
+  const mk = monthKeyOf(year, month);
+  const rec = state.payments.find(p=> p.studentId===sid && p.month===mk);
+  return !!(rec && rec.paid);
+}
+async function togglePayment(sid, year, month){
+  const mk = monthKeyOf(year, month);
+  const rec = state.payments.find(p=> p.studentId===sid && p.month===mk);
+  if(rec){ rec.paid = !rec.paid; }
+  else { state.payments.push({ id: uid(), studentId: sid, month: mk, paid: true }); }
+  render();
+  await savePayments();
 }
 
 /* ---------- overview: all students combined ---------- */
@@ -468,7 +502,10 @@ function renderOverview(){
       ${summary.length ? summary.map(x=>`
         <div class="sched-item">
           <span class="sched-when">${escapeHtml(x.name)}　${x.hours ? x.hours.toFixed(1) : 0} 小時</span>
-          <span style="font-weight:700;color:var(--red)">${x.fee!==null ? '$'+x.fee.toLocaleString() : '—'}</span>
+          <span style="display:flex;align-items:center;gap:8px;">
+            <span style="font-weight:700;color:var(--red)">${x.fee!==null ? '$'+x.fee.toLocaleString() : '—'}</span>
+            <span style="font-size:16px;">${isPaidForMonth(x.id, y, m) ? '✅' : '⏳'}</span>
+          </span>
         </div>`).join('') : `<div class="sched-empty">目前沒有學生資料</div>`}
       ${summary.length ? `
         <div class="sched-item" style="border-top:2px solid var(--ink);margin-top:6px;padding-top:12px;">
@@ -759,13 +796,15 @@ function renderMain(){
   const monthSched = monthSchedulesFor(s.id);
   const totalHours = monthSched.reduce((sum,sc)=> sum + (sc.hours||0), 0);
   const fee = s.rate ? Math.round(totalHours * s.rate) : null;
+  const cy = state.cursor.getFullYear(), cm = state.cursor.getMonth();
+  const paid = isPaidForMonth(s.id, cy, cm);
 
   area.innerHTML = `
     <div class="card">
       <div class="student-head">
         <div class="student-name-row">
           <span class="student-name">${escapeHtml(s.name)}</span>
-          <span class="student-rate">${s.rate ? `時薪 $${s.rate}／小時` : '尚未設定時薪'}</span>
+          <span class="student-rate">${s.rate ? `$${s.rate}/hr` : '尚未設定時薪'}</span>
         </div>
         ${state.viewMode==='teacher' ? `
           <div class="student-actions">
@@ -779,6 +818,7 @@ function renderMain(){
         <div class="fee-item"><div class="num">${totalHours ? totalHours.toFixed(1) : 0}</div><div class="lbl">本月時數</div></div>
         <div class="fee-item total"><div class="num">${fee!==null ? '$'+fee.toLocaleString() : '—'}</div><div class="lbl">本月學費</div></div>
       </div>
+      <button id="payBadge" class="pay-badge ${paid?'paid':'unpaid'} ${state.viewMode==='teacher'?'clickable':''}">${paid ? '✅ 學費已收' : '⏳ 學費未收'}</button>
     </div>
 
     <div class="card">
@@ -828,6 +868,7 @@ function renderMain(){
 
   if(state.viewMode==='teacher'){
     $('#linkBtn').addEventListener('click', ()=> copyParentLink(s.id));
+    $('#payBadge').addEventListener('click', ()=> togglePayment(s.id, cy, cm));
     $('#editStudentBtn').addEventListener('click', editStudent);
     $('#delStudentBtn').addEventListener('click', deleteStudent);
     $('#addTrigger').addEventListener('click', ()=> openForm(null, toKey(new Date())));
