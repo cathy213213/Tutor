@@ -521,7 +521,7 @@ async function saveSummaryText(sid, year, month, text){
 /* ---------- overview: all students combined ---------- */
 function allStudentsMonthSummary(year, month){
   const prefix = `${year}-${pad(month+1)}-`;
-  return state.students.map(s=>{
+  return state.students.filter(s=>!s.excludeFromOverview).map(s=>{
     const sched = state.schedules.filter(x=>x.studentId===s.id && x.date.startsWith(prefix));
     const hours = sched.reduce((sum,sc)=> sum + (sc.hours||0), 0);
     const fee = rateForMonth(s, year, month) ? Math.round(hours * rateForMonth(s, year, month)) : null;
@@ -530,7 +530,7 @@ function allStudentsMonthSummary(year, month){
 }
 function combinedOccurrencesForDate(dateKey){
   const list = [];
-  state.students.forEach(s=>{
+  state.students.filter(s=>!s.excludeFromOverview).forEach(s=>{
     occurrencesForDate(s.id, dateKey).forEach(o=> list.push({ studentName: s.name, time: o.time }));
   });
   return list.sort((a,b)=> a.time.localeCompare(b.time));
@@ -766,6 +766,10 @@ function addStudentPrompt(){
     <h3>新增學生</h3>
     <div class="field"><label>學生姓名</label><input type="text" id="m-name" placeholder="例如：小明"></div>
     <div class="field"><label>時薪（元／小時，可留空）</label><input type="number" id="m-rate" placeholder="例如 600"></div>
+    <div class="field" style="display:flex;align-items:center;gap:8px;">
+      <input type="checkbox" id="m-exclude" style="width:auto;">
+      <label for="m-exclude" style="margin:0;">從「全部學生總覽」排除（測試用學生）</label>
+    </div>
     <div class="modal-actions">
       <button class="btn btn-ghost" id="m-cancel">取消</button>
       <button class="btn btn-primary" id="m-save">新增</button>
@@ -779,7 +783,7 @@ function addStudentPrompt(){
     const rate = rateVal && !isNaN(Number(rateVal)) ? Number(rateVal) : null;
     const now = new Date();
     const rateHistory = rate!==null ? [{ id: uid(), month: monthKeyOf(now.getFullYear(), now.getMonth()), rate }] : [];
-    const student = { id: uid(), name, rateHistory };
+    const student = { id: uid(), name, rateHistory, excludeFromOverview: $('#m-exclude').checked };
     state.students.push(student);
     state.currentStudentId = student.id;
     closeModal();
@@ -795,6 +799,10 @@ function editStudent(){
   showModal(`
     <h3>編輯學生</h3>
     <div class="field"><label>學生姓名</label><input type="text" id="m-name" value="${escapeHtml(s.name)}"></div>
+    <div class="field" style="display:flex;align-items:center;gap:8px;">
+      <input type="checkbox" id="m-exclude" style="width:auto;" ${s.excludeFromOverview ? 'checked' : ''}>
+      <label for="m-exclude" style="margin:0;">從「全部學生總覽」排除（測試用學生）</label>
+    </div>
     <div class="modal-actions">
       <button class="btn btn-ghost" id="m-cancel">取消</button>
       <button class="btn btn-primary" id="m-save">儲存</button>
@@ -805,6 +813,7 @@ function editStudent(){
     const name = $('#m-name').value.trim();
     if(!name){ $('#m-name').focus(); return; }
     s.name = name;
+    s.excludeFromOverview = $('#m-exclude').checked;
     closeModal();
     await saveStudents();
     render();
