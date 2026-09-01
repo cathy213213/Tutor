@@ -92,6 +92,14 @@
   .day.selected{outline:2px solid var(--ink);outline-offset:1px;}
   .day .dot{width:5px;height:5px;border-radius:50%;background:var(--red);margin-top:2px;}
   .day .dot.dot-schedule{background:var(--teal);}
+
+  /* overview calendar: bigger cells showing time+name inline */
+  .ov-grid7{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;}
+  .ov-day{border-radius:8px;border:1px solid transparent;padding:4px 3px;min-height:60px;display:flex;flex-direction:column;align-items:flex-start;overflow:hidden;}
+  .ov-day.pad{visibility:hidden;}
+  .ov-day.today{border-color:var(--red);}
+  .ov-day .ov-num{font-size:11px;font-weight:700;color:var(--ink);margin-bottom:2px;}
+  .ov-day .ov-entry{font-size:9.5px;line-height:1.35;color:var(--teal);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;width:100%;}
   .day.clickable{cursor:pointer;}
   .day.clickable:hover{background:var(--paper);}
 
@@ -179,7 +187,7 @@
         <button id="btnStudent">學生檢視</button>
       </div>
     </div>
-    <p class="encourage">希望孩子的數學能夠更加穩定進步💪🏻讓我們一起努力吧🌷</p>
+    <p class="encourage">希望孩子的數學能夠越來越穩定進步💪🏻讓我們一起努力吧🌷</p>
   </header>
 
   <div id="overviewRow" style="display:none;margin-bottom:16px;">
@@ -652,7 +660,6 @@ function renderOverview(){
   const summary = allStudentsMonthSummary(y, m);
   const totalHours = summary.reduce((sum,x)=> sum + x.hours, 0);
   const totalFee = summary.reduce((sum,x)=> sum + (x.fee||0), 0);
-  const dateCounts = combinedScheduledDatesInMonth(y, m);
 
   area.innerHTML = `
     <div class="card">
@@ -662,8 +669,8 @@ function renderOverview(){
         <div class="cal-nav"><button id="ovNext">›</button></div>
       </div>
       <div class="grid7">${dowNames.map(d=>`<div class="dow">${d}</div>`).join('')}</div>
-      <div class="grid7" id="ovCalGrid"></div>
-      <div class="legend"><span><i style="background:var(--teal)"></i>當天有排課（點日期看名單）</span></div>
+      <div class="ov-grid7" id="ovCalGrid"></div>
+      <div class="legend"><span><i style="background:transparent;border:1px solid var(--red)"></i>今天</span></div>
     </div>
 
     <div class="card">
@@ -690,17 +697,17 @@ function renderOverview(){
   const firstDow = new Date(y, m, 1).getDay();
   const daysInMonth = new Date(y, m+1, 0).getDate();
   let html = '';
-  for(let i=0;i<firstDow;i++) html += `<div class="day pad"></div>`;
+  for(let i=0;i<firstDow;i++) html += `<div class="ov-day pad"></div>`;
   for(let d=1; d<=daysInMonth; d++){
     const key = toKey(new Date(y, m, d));
-    const count = dateCounts.get(key) || 0;
+    const list = combinedOccurrencesForDate(key);
     const isToday = key === todayKey();
-    const classes = ['day'];
+    const classes = ['ov-day'];
     if(isToday) classes.push('today');
-    if(count>0) classes.push('has-schedule','clickable');
+    if(list.length) classes.push('clickable');
     html += `<div class="${classes.join(' ')}" data-date="${key}">
-      <span>${d}</span>
-      ${count>0 ? `<span style="font-size:9px;color:var(--teal);font-weight:700;">${count}堂</span>` : ''}
+      <span class="ov-num">${d}</span>
+      ${list.map(x=>`<span class="ov-entry">${x.time}${escapeHtml(x.studentName)}</span>`).join('')}
     </div>`;
   }
   $('#ovCalGrid').innerHTML = html;
