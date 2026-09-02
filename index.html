@@ -306,12 +306,14 @@ function formatMonthRange(startMonth, endMonth, ongoing){
 }
 function eduLine(e){
   const range = formatMonthRange(e.startMonth, e.endMonth, e.ongoing);
-  return `${e.degree ? escapeHtml(e.degree)+'．' : ''}${escapeHtml(e.school)}${range ? '（'+range+'）' : ''}`;
+  const main = `${e.degree ? escapeHtml(e.degree)+'．' : ''}${escapeHtml(e.school)}`;
+  return range ? `${main}<br><span style="color:var(--ink-soft);font-size:12px;">${range}</span>` : main;
 }
 function teachLine(t){
   if(t.school !== undefined){
     const range = formatMonthRange(t.startMonth, t.endMonth, t.ongoing);
-    return `${escapeHtml(t.school)}${t.title ? '．'+escapeHtml(t.title) : ''}${range ? '（'+range+'）' : ''}`;
+    const main = `${escapeHtml(t.school)}${t.title ? '．'+escapeHtml(t.title) : ''}`;
+    return range ? `${main}<br><span style="color:var(--ink-soft);font-size:12px;">${range}</span>` : main;
   }
   return escapeHtml(t.text || '');
 }
