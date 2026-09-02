@@ -216,7 +216,7 @@
 
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-import { getFirestore, doc, getDoc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+import { getFirestore, doc, getDoc, setDoc, onSnapshot, increment } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-storage.js";
 
 const firebaseConfig = {
@@ -260,7 +260,9 @@ let state = {
   showOverview: false,
   showProfileEdit: false,
   lockedProfile: false,
-  profile: null
+  profile: null,
+  viewCounts: {},
+  viewTracked: false
 };
 
 const dayNames = ['週日','週一','週二','週三','週四','週五','週六'];
@@ -350,13 +352,14 @@ async function loadData(){
     return;
   }
   try{
-    const [sSnap, lSnap, schSnap, paySnap, sumSnap, profSnap] = await Promise.all([
+    const [sSnap, lSnap, schSnap, paySnap, sumSnap, profSnap, viewSnap] = await Promise.all([
       getDoc(doc(db,'tutorlog','students')),
       getDoc(doc(db,'tutorlog','lessons')),
       getDoc(doc(db,'tutorlog','schedules')),
       getDoc(doc(db,'tutorlog','payments')),
       getDoc(doc(db,'tutorlog','summaries')),
-      getDoc(doc(db,'tutorlog','profile'))
+      getDoc(doc(db,'tutorlog','profile')),
+      getDoc(doc(db,'tutorlog','viewCounts'))
     ]);
     state.students = sSnap.exists() ? (sSnap.data().list || []) : [];
     state.lessons = lSnap.exists() ? (lSnap.data().list || []) : [];
@@ -364,6 +367,7 @@ async function loadData(){
     state.payments = paySnap.exists() ? (paySnap.data().list || []) : [];
     state.summaries = sumSnap.exists() ? (sumSnap.data().list || []) : [];
     state.profile = profSnap.exists() ? profSnap.data() : defaultProfile();
+    state.viewCounts = viewSnap.exists() ? (viewSnap.data() || {}) : {};
   }catch(e){
     showPersistentError('讀取資料時發生問題：'+(e?.message||e));
     state.students = [];
@@ -372,6 +376,7 @@ async function loadData(){
     state.payments = [];
     state.summaries = [];
     state.profile = defaultProfile();
+    state.viewCounts = {};
   }
   // fill in any missing profile fields / migrate old plain-text education
   {
@@ -446,9 +451,20 @@ async function loadData(){
   if(state.students.length && !state.currentStudentId && !state.lockedParent && !state.lockedStudent){
     state.currentStudentId = state.students[0].id;
   }
+  if(!state.viewTracked){
+    state.viewTracked = true;
+    if(state.lockedProfile) trackView('about');
+    else if(state.lockedParent && state.currentStudentId) trackView(state.currentStudentId+'_parent');
+    else if(state.lockedStudent && state.currentStudentId) trackView(state.currentStudentId+'_student');
+  }
   state.loaded = true;
   render();
   attachLiveListeners();
+}
+
+function trackView(key){
+  if(!db) return;
+  setDoc(doc(db,'tutorlog','viewCounts'), { [key]: increment(1) }, { merge: true }).catch(()=>{});
 }
 
 function attachLiveListeners(){
@@ -477,6 +493,10 @@ function attachLiveListeners(){
     if(snap.exists()) state.profile = snap.data();
     if(state.loaded) render();
   }, e=> showPersistentError('即時同步介紹頁時發生問題：'+(e?.message||e)));
+  onSnapshot(doc(db,'tutorlog','viewCounts'), snap=>{
+    state.viewCounts = snap.exists() ? (snap.data() || {}) : {};
+    if(state.loaded) render();
+  }, ()=>{});
 }
 
 async function saveStudents(){
@@ -822,6 +842,7 @@ function renderProfileEditor(){
 
     <div class="card">
       <h3 class="section-title">公開介紹頁</h3>
+      <p style="font-size:13px;color:var(--ink-soft);margin:0 0 12px;">👀 累積瀏覽次數：${state.viewCounts.about || 0} 次</p>
       <div style="display:flex;gap:12px;flex-wrap:wrap;">
         <button class="btn btn-ghost" id="previewProfileBtn">👀 預覽介紹頁</button>
         <button class="btn btn-primary" id="copyAboutBtn">複製介紹頁連結</button>
@@ -1673,6 +1694,7 @@ function renderMain(){
             <button id="delStudentBtn" class="danger">刪除學生</button>
           </div>` : ''}
       </div>
+      ${state.viewMode==='teacher' ? `<p style="font-size:12px;color:var(--ink-soft);margin:8px 0 0;">👀 家長頁瀏覽 ${state.viewCounts[s.id+'_parent']||0} 次・學生頁瀏覽 ${state.viewCounts[s.id+'_student']||0} 次</p>` : ''}
       <div class="fee-summary">
         <div class="fee-item"><div class="num">${monthSched.length}</div><div class="lbl">本月堂數</div></div>
         <div class="fee-item"><div class="num">${totalHours ? totalHours.toFixed(1) : 0}</div><div class="lbl">本月時數</div></div>
