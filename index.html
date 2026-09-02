@@ -657,6 +657,7 @@ function renderStudentView(){
   const lessonDates = new Set(studentLessons(s.id).map(l=>l.date));
 
   area.innerHTML = `
+    ${aboutLinkBanner()}
     <div class="card">
       <div style="font-size:15px;line-height:2;">
         📚上課網址：<a href="https://meet.google.com/qqa-kriu-bfw" target="_blank" rel="noopener" style="color:var(--teal);word-break:break-all;">https://meet.google.com/qqa-kriu-bfw</a><br>
@@ -1656,6 +1657,7 @@ function renderMain(){
   const summaryText = getSummaryText(s.id, cy, cm);
 
   area.innerHTML = `
+    ${state.viewMode==='parent' ? aboutLinkBanner() : ''}
     <div class="card">
       <div class="student-head">
         <div class="student-name-row">
@@ -1912,6 +1914,14 @@ function deleteLesson(id){
     await saveLessons();
     render();
   });
+}
+
+function aboutLinkBanner(){
+  const base = getBaseUrl();
+  const href = base ? `${base}#/about` : '#/about';
+  return `<div class="card" style="text-align:center;">
+    <a href="${href}" target="_blank" rel="noopener" style="color:var(--teal);font-size:13px;font-weight:600;text-decoration:underline;">👩‍🏫 認識柏萱老師</a>
+  </div>`;
 }
 
 function getBaseUrl(){
