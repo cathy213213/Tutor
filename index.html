@@ -295,7 +295,7 @@ function minuteOptions(selected){
 }
 function uid(){ return String(Date.now())+Math.floor(Math.random()*1000); }
 function defaultProfile(){
-  return { name:'', photoUrl:'', education:'', experience:'', educationList:[], teachingHistory:[], testimonials:[], classPhotos:[] };
+  return { name:'', photoUrl:'', education:'', experience:'', experiencePhotoUrl:'', educationList:[], teachingHistory:[], testimonials:[], classPhotos:[] };
 }
 function formatMonthRange(startMonth, endMonth, ongoing){
   const fmt = (m)=> m ? m.replace('-','/') : '';
@@ -747,15 +747,26 @@ function renderProfileEditor(){
       </div>
       <div class="field"><label>姓名</label><input type="text" id="p-name" value="${escapeHtml(p.name||'')}"></div>
       <div class="field"><label>經歷</label><textarea id="p-experience" placeholder="例如：曾任OO補習班數學教師">${p.experience||''}</textarea></div>
+      <div class="field">
+        <label>經歷證明照片（選填）</label>
+        ${p.experiencePhotoUrl ? `<div style="margin-bottom:8px;display:flex;align-items:center;gap:10px;">
+          <img src="${p.experiencePhotoUrl}" class="no-save lightbox-img" data-src="${p.experiencePhotoUrl}" draggable="false" oncontextmenu="return false;" style="width:64px;height:64px;border-radius:8px;object-fit:cover;cursor:zoom-in;">
+          <button class="add-trigger" id="removeExpPhotoBtn" style="color:var(--red)">移除照片</button>
+        </div>` : ''}
+        <input type="file" id="expPhotoFile" accept="image/*">
+      </div>
       <div style="margin-top:6px;"><button class="btn btn-primary" id="saveProfileBtn">儲存基本資料</button></div>
     </div>
 
     <div class="card">
       <h3 class="section-title">學歷</h3>
       ${p.educationList.length ? p.educationList.map(e=>`
-        <div class="sched-item">
-          <span class="sched-when">${eduLine(e)}</span>
-          <span style="display:flex;gap:12px">
+        <div class="sched-item" style="align-items:flex-start;">
+          <span class="sched-when" style="display:flex;gap:10px;">
+            ${e.certPhotoUrl ? `<img src="${e.certPhotoUrl}" class="no-save lightbox-img" data-src="${e.certPhotoUrl}" draggable="false" oncontextmenu="return false;" style="width:40px;height:40px;border-radius:8px;object-fit:cover;flex-shrink:0;cursor:zoom-in;">` : ''}
+            <span>${eduLine(e)}</span>
+          </span>
+          <span style="display:flex;gap:12px;flex-shrink:0;">
             <button data-edit-edu="${e.id}">編輯</button>
             <button data-del-edu="${e.id}" style="color:var(--red)">刪除</button>
           </span>
@@ -819,6 +830,27 @@ function renderProfileEditor(){
 
   $('#uploadPhotoBtn').addEventListener('click', ()=> $('#photoFile').click());
   $('#photoFile').addEventListener('change', handleProfilePhotoUpload);
+  $('#expPhotoFile').addEventListener('change', async (e)=>{
+    const file = e.target.files[0];
+    e.target.value = '';
+    if(!file) return;
+    try{
+      const url = await uploadImage(file, 'experience');
+      state.profile.experiencePhotoUrl = url;
+      await saveProfile();
+      render();
+      showToast('照片已更新');
+    }catch(err){
+      showToast('照片上傳失敗：'+(err?.message||err));
+    }
+  });
+  if($('#removeExpPhotoBtn')){
+    $('#removeExpPhotoBtn').addEventListener('click', async ()=>{
+      state.profile.experiencePhotoUrl = '';
+      await saveProfile();
+      render();
+    });
+  }
   $('#saveProfileBtn').addEventListener('click', async ()=>{
     p.name = $('#p-name').value.trim();
     p.experience = $('#p-experience').value.trim();
@@ -993,7 +1025,7 @@ function openAvatarCropper(file){
 
 /* ---------- education (structured) ---------- */
 function eduModal(existing){
-  const e = existing || { degree:'碩士', school:'', startMonth:'', endMonth:'', ongoing:false };
+  const e = existing || { degree:'碩士', school:'', startMonth:'', endMonth:'', ongoing:false, certPhotoUrl:'' };
   showModal(`
     <h3>${existing?'編輯學歷':'新增學歷'}</h3>
     <div class="field"><label>學位</label>
@@ -1010,6 +1042,11 @@ function eduModal(existing){
       <input type="checkbox" id="m-ongoing" style="width:auto;" ${e.ongoing?'checked':''}>
       <label for="m-ongoing" style="margin:0;">目前仍在學／至今</label>
     </div>
+    <div class="field">
+      <label>證書照片（選填）</label>
+      ${e.certPhotoUrl ? `<div style="margin-bottom:8px;"><img src="${e.certPhotoUrl}" class="no-save" draggable="false" oncontextmenu="return false;" style="width:64px;height:64px;border-radius:8px;object-fit:cover;"></div>` : ''}
+      <input type="file" id="m-cert" accept="image/*">
+    </div>
     <div class="modal-actions">
       <button class="btn btn-ghost" id="m-cancel">取消</button>
       <button class="btn btn-primary" id="m-save">${existing?'儲存':'新增'}</button>
@@ -1020,13 +1057,20 @@ function eduModal(existing){
   $('#m-save').addEventListener('click', async ()=>{
     const school = $('#m-school').value.trim();
     if(!school){ $('#m-school').focus(); return; }
+    const file = $('#m-cert').files[0];
+    let certPhotoUrl = e.certPhotoUrl || '';
+    if(file){
+      try{ certPhotoUrl = await uploadImage(file, 'education'); }
+      catch(err){ showToast('照片上傳失敗：'+(err?.message||err)); }
+    }
     const data = {
       id: existing ? existing.id : uid(),
       degree: $('#m-degree').value,
       school,
       startMonth: $('#m-start').value,
       endMonth: $('#m-ongoing').checked ? '' : $('#m-end').value,
-      ongoing: $('#m-ongoing').checked
+      ongoing: $('#m-ongoing').checked,
+      certPhotoUrl
     };
     state.profile.educationList = state.profile.educationList || [];
     if(existing){
@@ -1208,8 +1252,17 @@ function renderProfilePage(){
       ${p.photoUrl ? `<img src="${p.photoUrl}" class="no-save lightbox-img" data-src="${p.photoUrl}" draggable="false" oncontextmenu="return false;" style="width:120px;height:120px;border-radius:50%;object-fit:cover;margin-bottom:12px;cursor:zoom-in;">` : ''}
       <div style="font-family:'Noto Serif TC',serif;font-size:22px;font-weight:700;">${escapeHtml(p.name||'')}</div>
     </div>
-    ${(p.educationList && p.educationList.length) ? `<div class="card"><h3 class="section-title">學歷</h3>${p.educationList.map(e=>`<div class="sched-item"><span class="sched-when">${eduLine(e)}</span></div>`).join('')}</div>` : ''}
-    ${p.experience ? `<div class="card"><h3 class="section-title">經歷</h3><div style="font-size:14px;line-height:1.8;white-space:pre-wrap;">${escapeHtml(p.experience)}</div></div>` : ''}
+    ${(p.educationList && p.educationList.length) ? `<div class="card"><h3 class="section-title">學歷</h3>${p.educationList.map(e=>`
+      <div class="sched-item" style="align-items:flex-start;">
+        <span class="sched-when" style="display:flex;gap:10px;">
+          ${e.certPhotoUrl ? `<img src="${e.certPhotoUrl}" class="no-save lightbox-img" data-src="${e.certPhotoUrl}" draggable="false" oncontextmenu="return false;" style="width:40px;height:40px;border-radius:8px;object-fit:cover;flex-shrink:0;cursor:zoom-in;">` : ''}
+          <span>${eduLine(e)}</span>
+        </span>
+      </div>`).join('')}</div>` : ''}
+    ${(p.experience || p.experiencePhotoUrl) ? `<div class="card"><h3 class="section-title">經歷</h3>
+      ${p.experience ? `<div style="font-size:14px;line-height:1.8;white-space:pre-wrap;">${escapeHtml(p.experience)}</div>` : ''}
+      ${p.experiencePhotoUrl ? `<div style="margin-top:10px;"><img src="${p.experiencePhotoUrl}" class="no-save lightbox-img" data-src="${p.experiencePhotoUrl}" draggable="false" oncontextmenu="return false;" style="width:96px;height:96px;border-radius:8px;object-fit:cover;cursor:zoom-in;"></div>` : ''}
+    </div>` : ''}
     ${(p.teachingHistory && p.teachingHistory.length) ? `<div class="card"><h3 class="section-title">教學經歷</h3>${p.teachingHistory.map(t=>`<div class="sched-item"><span class="sched-when">${teachLine(t)}</span></div>`).join('')}</div>` : ''}
     ${(p.testimonials && p.testimonials.length) ? `<div class="card"><h3 class="section-title">家長及學生回饋</h3>${p.testimonials.map(t=>`
       <div class="sched-item" style="align-items:flex-start;">
