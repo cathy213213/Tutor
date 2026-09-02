@@ -75,6 +75,8 @@
   .pay-badge.clickable{cursor:pointer;}
   .pay-dot{font-size:12px;margin-left:6px;}
   .no-save{-webkit-touch-callout:none;-webkit-user-select:none;user-select:none;}
+  .lightbox-backdrop{position:fixed;inset:0;background:rgba(0,0,0,0.9);z-index:100;display:flex;align-items:center;justify-content:center;padding:24px;}
+  .lightbox-backdrop img{max-width:100%;max-height:100%;border-radius:8px;}
 
   .cal-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;}
   .cal-head h2{font-family:'Noto Serif TC',serif;font-size:18px;margin:0;font-weight:700;}
@@ -179,7 +181,7 @@
   <header>
     <div class="eyebrow-row">
       <div>
-        <h1>數學家教紀錄📝</h1>
+        <h1 id="mainTitle">數學家教紀錄📝</h1>
         <p class="sub" id="subline">載入中…</p>
       </div>
       <div class="toggle" id="modeToggle">
@@ -292,6 +294,27 @@ function minuteOptions(selected){
   return [0,15,30,45].map(m=>`<option value="${m}" ${m===selected?'selected':''}>${pad(m)}</option>`).join('');
 }
 function uid(){ return String(Date.now())+Math.floor(Math.random()*1000); }
+function defaultProfile(){
+  return { name:'', photoUrl:'', education:'', experience:'', educationList:[], teachingHistory:[], testimonials:[], classPhotos:[] };
+}
+function formatMonthRange(startMonth, endMonth, ongoing){
+  const fmt = (m)=> m ? m.replace('-','/') : '';
+  if(ongoing) return `${fmt(startMonth)} - 至今`;
+  if(startMonth && endMonth) return `${fmt(startMonth)} - ${fmt(endMonth)}`;
+  if(startMonth) return fmt(startMonth);
+  return '';
+}
+function eduLine(e){
+  const range = formatMonthRange(e.startMonth, e.endMonth, e.ongoing);
+  return `${e.degree ? escapeHtml(e.degree)+'．' : ''}${escapeHtml(e.school)}${range ? '（'+range+'）' : ''}`;
+}
+function teachLine(t){
+  if(t.school !== undefined){
+    const range = formatMonthRange(t.startMonth, t.endMonth, t.ongoing);
+    return `${escapeHtml(t.school)}${t.title ? '．'+escapeHtml(t.title) : ''}${range ? '（'+range+'）' : ''}`;
+  }
+  return escapeHtml(t.text || '');
+}
 
 /* ---------- modal / toast (replaces blocked browser prompt/confirm/alert) ---------- */
 function showModal(html){
@@ -338,7 +361,7 @@ async function loadData(){
     state.schedules = schSnap.exists() ? (schSnap.data().list || []) : [];
     state.payments = paySnap.exists() ? (paySnap.data().list || []) : [];
     state.summaries = sumSnap.exists() ? (sumSnap.data().list || []) : [];
-    state.profile = profSnap.exists() ? profSnap.data() : { name:'', photoUrl:'', education:'', experience:'', teachingHistory:[], testimonials:[] };
+    state.profile = profSnap.exists() ? profSnap.data() : defaultProfile();
   }catch(e){
     showPersistentError('讀取資料時發生問題：'+(e?.message||e));
     state.students = [];
@@ -346,7 +369,24 @@ async function loadData(){
     state.schedules = [];
     state.payments = [];
     state.summaries = [];
-    state.profile = { name:'', photoUrl:'', education:'', experience:'', teachingHistory:[], testimonials:[] };
+    state.profile = defaultProfile();
+  }
+  // fill in any missing profile fields / migrate old plain-text education
+  {
+    const p = state.profile;
+    let profileChanged = false;
+    if(p.teachingHistory===undefined){ p.teachingHistory = []; profileChanged = true; }
+    if(p.testimonials===undefined){ p.testimonials = []; profileChanged = true; }
+    if(p.classPhotos===undefined){ p.classPhotos = []; profileChanged = true; }
+    if(p.educationList===undefined){
+      profileChanged = true;
+      if(typeof p.education === 'string' && p.education.trim()){
+        p.educationList = [{ id: uid(), degree:'', school: p.education.trim(), startMonth:'', endMonth:'', ongoing:false }];
+      } else {
+        p.educationList = [];
+      }
+    }
+    if(profileChanged) saveProfile();
   }
   // migrate single flat rate into rateHistory
   let studentsChanged = false;
@@ -685,16 +725,18 @@ function renderStudentView(){
 /* ---------- teacher public profile page ---------- */
 function renderProfileEditor(){
   const area = $('#mainArea');
-  const p = state.profile || (state.profile = { name:'', photoUrl:'', education:'', experience:'', teachingHistory:[], testimonials:[] });
+  const p = state.profile || (state.profile = defaultProfile());
   p.teachingHistory = p.teachingHistory || [];
   p.testimonials = p.testimonials || [];
+  p.classPhotos = p.classPhotos || [];
+  p.educationList = p.educationList || [];
 
   area.innerHTML = `
     <div class="card">
       <h3 class="section-title">老師介紹頁編輯</h3>
       <div style="text-align:center;margin-bottom:16px;">
         ${p.photoUrl
-          ? `<img src="${p.photoUrl}" class="no-save" draggable="false" oncontextmenu="return false;" style="width:96px;height:96px;border-radius:50%;object-fit:cover;margin-bottom:8px;">`
+          ? `<img src="${p.photoUrl}" class="no-save lightbox-img" data-src="${p.photoUrl}" draggable="false" oncontextmenu="return false;" style="width:96px;height:96px;border-radius:50%;object-fit:cover;margin-bottom:8px;cursor:zoom-in;">`
           : `<div style="width:96px;height:96px;border-radius:50%;background:var(--paper);margin:0 auto 8px;display:flex;align-items:center;justify-content:center;color:var(--ink-soft);font-size:12px;">尚無照片</div>`}
         <div>
           <button class="add-trigger" id="uploadPhotoBtn">📷 上傳／更換照片</button>
@@ -702,17 +744,32 @@ function renderProfileEditor(){
         </div>
       </div>
       <div class="field"><label>姓名</label><input type="text" id="p-name" value="${escapeHtml(p.name||'')}"></div>
-      <div class="field"><label>學歷</label><textarea id="p-education" placeholder="例如：OO大學數學系">${p.education||''}</textarea></div>
       <div class="field"><label>經歷</label><textarea id="p-experience" placeholder="例如：曾任OO補習班數學教師">${p.experience||''}</textarea></div>
       <div style="margin-top:6px;"><button class="btn btn-primary" id="saveProfileBtn">儲存基本資料</button></div>
+    </div>
+
+    <div class="card">
+      <h3 class="section-title">學歷</h3>
+      ${p.educationList.length ? p.educationList.map(e=>`
+        <div class="sched-item">
+          <span class="sched-when">${eduLine(e)}</span>
+          <span style="display:flex;gap:12px">
+            <button data-edit-edu="${e.id}">編輯</button>
+            <button data-del-edu="${e.id}" style="color:var(--red)">刪除</button>
+          </span>
+        </div>`).join('') : `<div class="sched-empty">尚未新增學歷</div>`}
+      <div class="sched-add-row"><button id="addEduBtn">＋ 新增學歷</button></div>
     </div>
 
     <div class="card">
       <h3 class="section-title">教學經歷</h3>
       ${p.teachingHistory.length ? p.teachingHistory.map(t=>`
         <div class="sched-item">
-          <span class="sched-when">${escapeHtml(t.text)}</span>
-          <button data-del-teach="${t.id}" style="color:var(--red)">刪除</button>
+          <span class="sched-when">${teachLine(t)}</span>
+          <span style="display:flex;gap:12px">
+            <button data-edit-teach="${t.id}">編輯</button>
+            <button data-del-teach="${t.id}" style="color:var(--red)">刪除</button>
+          </span>
         </div>`).join('') : `<div class="sched-empty">尚未新增教學經歷</div>`}
       <div class="sched-add-row"><button id="addTeachBtn">＋ 新增一項</button></div>
     </div>
@@ -722,17 +779,39 @@ function renderProfileEditor(){
       ${p.testimonials.length ? p.testimonials.map(t=>`
         <div class="sched-item" style="align-items:flex-start;">
           <span class="sched-when" style="display:flex;gap:10px;white-space:normal;">
-            ${t.photoUrl ? `<img src="${t.photoUrl}" class="no-save" draggable="false" oncontextmenu="return false;" style="width:40px;height:40px;border-radius:8px;object-fit:cover;flex-shrink:0;">` : ''}
+            ${t.photoUrl ? `<img src="${t.photoUrl}" class="no-save lightbox-img" data-src="${t.photoUrl}" draggable="false" oncontextmenu="return false;" style="width:40px;height:40px;border-radius:8px;object-fit:cover;flex-shrink:0;cursor:zoom-in;">` : ''}
             <span>${escapeHtml(t.text)}</span>
           </span>
-          <button data-del-testi="${t.id}" style="color:var(--red)">刪除</button>
+          <span style="display:flex;gap:12px;flex-shrink:0;">
+            <button data-edit-testi="${t.id}">編輯</button>
+            <button data-del-testi="${t.id}" style="color:var(--red)">刪除</button>
+          </span>
         </div>`).join('') : `<div class="sched-empty">尚未新增回饋</div>`}
       <div class="sched-add-row"><button id="addTestiBtn">＋ 新增一則回饋</button></div>
     </div>
 
     <div class="card">
-      <h3 class="section-title">公開介紹頁連結</h3>
-      <button class="btn btn-primary" id="copyAboutBtn">複製介紹頁連結</button>
+      <h3 class="section-title">上課畫面分享</h3>
+      ${p.classPhotos.length ? p.classPhotos.map(t=>`
+        <div class="sched-item" style="align-items:flex-start;">
+          <span class="sched-when" style="display:flex;gap:10px;white-space:normal;">
+            ${t.photoUrl ? `<img src="${t.photoUrl}" class="no-save lightbox-img" data-src="${t.photoUrl}" draggable="false" oncontextmenu="return false;" style="width:40px;height:40px;border-radius:8px;object-fit:cover;flex-shrink:0;cursor:zoom-in;">` : ''}
+            <span>${escapeHtml(t.text)}</span>
+          </span>
+          <span style="display:flex;gap:12px;flex-shrink:0;">
+            <button data-edit-photo="${t.id}">編輯</button>
+            <button data-del-photo="${t.id}" style="color:var(--red)">刪除</button>
+          </span>
+        </div>`).join('') : `<div class="sched-empty">尚未分享上課畫面</div>`}
+      <div class="sched-add-row"><button id="addClassPhotoBtn">＋ 新增上課畫面</button></div>
+    </div>
+
+    <div class="card">
+      <h3 class="section-title">公開介紹頁</h3>
+      <div style="display:flex;gap:12px;flex-wrap:wrap;">
+        <button class="btn btn-ghost" id="previewProfileBtn">👀 預覽介紹頁</button>
+        <button class="btn btn-primary" id="copyAboutBtn">複製介紹頁連結</button>
+      </div>
     </div>
   `;
 
@@ -740,13 +819,23 @@ function renderProfileEditor(){
   $('#photoFile').addEventListener('change', handleProfilePhotoUpload);
   $('#saveProfileBtn').addEventListener('click', async ()=>{
     p.name = $('#p-name').value.trim();
-    p.education = $('#p-education').value.trim();
     p.experience = $('#p-experience').value.trim();
     await saveProfile();
     showToast('已儲存');
   });
+  $('#addEduBtn').addEventListener('click', addEducationItem);
   $('#addTeachBtn').addEventListener('click', addTeachingItem);
   $('#addTestiBtn').addEventListener('click', addTestimonialItem);
+  $('#addClassPhotoBtn').addEventListener('click', addClassPhotoItem);
+  area.querySelectorAll('[data-edit-edu]').forEach(btn=> btn.addEventListener('click', ()=> editEducationItem(btn.dataset.editEdu)));
+  area.querySelectorAll('[data-del-edu]').forEach(btn=>{
+    btn.addEventListener('click', async ()=>{
+      p.educationList = p.educationList.filter(x=>x.id!==btn.dataset.delEdu);
+      await saveProfile();
+      render();
+    });
+  });
+  area.querySelectorAll('[data-edit-teach]').forEach(btn=> btn.addEventListener('click', ()=> editTeachingItem(btn.dataset.editTeach)));
   area.querySelectorAll('[data-del-teach]').forEach(btn=>{
     btn.addEventListener('click', async ()=>{
       p.teachingHistory = p.teachingHistory.filter(t=>t.id!==btn.dataset.delTeach);
@@ -754,6 +843,7 @@ function renderProfileEditor(){
       render();
     });
   });
+  area.querySelectorAll('[data-edit-testi]').forEach(btn=> btn.addEventListener('click', ()=> editTestimonialItem(btn.dataset.editTesti)));
   area.querySelectorAll('[data-del-testi]').forEach(btn=>{
     btn.addEventListener('click', async ()=>{
       p.testimonials = p.testimonials.filter(t=>t.id!==btn.dataset.delTesti);
@@ -761,53 +851,260 @@ function renderProfileEditor(){
       render();
     });
   });
+  area.querySelectorAll('[data-edit-photo]').forEach(btn=> btn.addEventListener('click', ()=> editClassPhotoItem(btn.dataset.editPhoto)));
+  area.querySelectorAll('[data-del-photo]').forEach(btn=>{
+    btn.addEventListener('click', async ()=>{
+      p.classPhotos = p.classPhotos.filter(t=>t.id!==btn.dataset.delPhoto);
+      await saveProfile();
+      render();
+    });
+  });
   $('#copyAboutBtn').addEventListener('click', copyAboutLink);
+  $('#previewProfileBtn').addEventListener('click', previewProfile);
+  bindLightboxImages(area);
 }
 
-async function handleProfilePhotoUpload(e){
+function handleProfilePhotoUpload(e){
   const file = e.target.files[0];
   e.target.value = '';
   if(!file) return;
-  try{
-    const url = await uploadImage(file, 'profile');
-    state.profile.photoUrl = url;
-    await saveProfile();
-    render();
-    showToast('照片已更新');
-  }catch(err){
-    showToast('照片上傳失敗：'+(err?.message||err));
-  }
+  openAvatarCropper(file);
 }
 
-function addTeachingItem(){
+function openAvatarCropper(file){
+  const objectUrl = URL.createObjectURL(file);
+  const FRAME = 240;
   showModal(`
-    <h3>新增教學經歷</h3>
-    <div class="field"><label>內容</label><textarea id="m-text" placeholder="例如：2020-2024 任教於OO補習班"></textarea></div>
+    <h3>調整大頭照</h3>
+    <div id="cropStage" style="position:relative;width:${FRAME}px;height:${FRAME}px;margin:0 auto 14px;overflow:hidden;border-radius:50%;background:#000;touch-action:none;cursor:grab;">
+      <img id="cropImg" src="${objectUrl}" draggable="false" style="position:absolute;top:0;left:0;user-select:none;">
+    </div>
+    <div class="field"><label>縮放</label><input type="range" id="cropZoom" min="100" max="300" value="100" style="width:100%;"></div>
+    <p style="font-size:12px;color:var(--ink-soft);text-align:center;margin:-6px 0 10px;">拖曳照片調整位置，圓框內就是最後顯示的範圍</p>
     <div class="modal-actions">
       <button class="btn btn-ghost" id="m-cancel">取消</button>
-      <button class="btn btn-primary" id="m-save">新增</button>
+      <button class="btn btn-primary" id="m-save">確認並上傳</button>
     </div>
   `);
+
+  const stage = $('#cropStage');
+  const img = $('#cropImg');
+  const zoomInput = $('#cropZoom');
+  let naturalW=0, naturalH=0, baseScale=1, scale=1, left=0, top=0;
+  let dragging=false, startX=0, startY=0, startLeft=0, startTop=0;
+
+  function applyTransform(){
+    img.style.width = (naturalW*scale)+'px';
+    img.style.height = (naturalH*scale)+'px';
+    img.style.left = left+'px';
+    img.style.top = top+'px';
+  }
+  function clamp(){
+    const w = naturalW*scale, h = naturalH*scale;
+    if(left>0) left=0;
+    if(top>0) top=0;
+    if(left < FRAME-w) left = FRAME-w;
+    if(top < FRAME-h) top = FRAME-h;
+  }
+  function initCrop(){
+    naturalW = img.naturalWidth;
+    naturalH = img.naturalHeight;
+    baseScale = Math.max(FRAME/naturalW, FRAME/naturalH);
+    scale = baseScale;
+    left = (FRAME - naturalW*scale)/2;
+    top = (FRAME - naturalH*scale)/2;
+    applyTransform();
+  }
+  img.onload = initCrop;
+  if(img.complete && img.naturalWidth) initCrop();
+
+  zoomInput.addEventListener('input', ()=>{
+    const factor = Number(zoomInput.value)/100;
+    const cx = FRAME/2, cy = FRAME/2;
+    const oldW = naturalW*scale, oldH = naturalH*scale;
+    const relX = oldW ? (cx-left)/oldW : 0.5;
+    const relY = oldH ? (cy-top)/oldH : 0.5;
+    scale = baseScale*factor;
+    const newW = naturalW*scale, newH = naturalH*scale;
+    left = cx - relX*newW;
+    top = cy - relY*newH;
+    clamp();
+    applyTransform();
+  });
+
+  function pointerDown(e){
+    dragging = true;
+    const p = e.touches ? e.touches[0] : e;
+    startX = p.clientX; startY = p.clientY; startLeft = left; startTop = top;
+  }
+  function pointerMove(e){
+    if(!dragging) return;
+    e.preventDefault();
+    const p = e.touches ? e.touches[0] : e;
+    left = startLeft + (p.clientX-startX);
+    top = startTop + (p.clientY-startY);
+    clamp();
+    applyTransform();
+  }
+  function pointerUp(){ dragging = false; }
+
+  stage.addEventListener('mousedown', pointerDown);
+  window.addEventListener('mousemove', pointerMove);
+  window.addEventListener('mouseup', pointerUp);
+  stage.addEventListener('touchstart', pointerDown, {passive:true});
+  stage.addEventListener('touchmove', pointerMove, {passive:false});
+  stage.addEventListener('touchend', pointerUp);
+
+  function cleanup(){
+    URL.revokeObjectURL(objectUrl);
+    window.removeEventListener('mousemove', pointerMove);
+    window.removeEventListener('mouseup', pointerUp);
+  }
+
+  $('#m-cancel').addEventListener('click', ()=>{ cleanup(); closeModal(); });
+  $('#m-save').addEventListener('click', ()=>{
+    const OUT = 480;
+    const canvas = document.createElement('canvas');
+    canvas.width = OUT; canvas.height = OUT;
+    const ctx = canvas.getContext('2d');
+    const srcX = (0-left)/scale;
+    const srcY = (0-top)/scale;
+    const srcSize = FRAME/scale;
+    ctx.drawImage(img, srcX, srcY, srcSize, srcSize, 0, 0, OUT, OUT);
+    canvas.toBlob(async (blob)=>{
+      if(!blob){ showToast('照片處理失敗'); return; }
+      const croppedFile = new File([blob], 'avatar.jpg', { type: 'image/jpeg' });
+      cleanup();
+      closeModal();
+      try{
+        const url = await uploadImage(croppedFile, 'profile');
+        state.profile.photoUrl = url;
+        await saveProfile();
+        render();
+        showToast('照片已更新');
+      }catch(err){
+        showToast('照片上傳失敗：'+(err?.message||err));
+      }
+    }, 'image/jpeg', 0.9);
+  });
+}
+
+/* ---------- education (structured) ---------- */
+function eduModal(existing){
+  const e = existing || { degree:'碩士', school:'', startMonth:'', endMonth:'', ongoing:false };
+  showModal(`
+    <h3>${existing?'編輯學歷':'新增學歷'}</h3>
+    <div class="field"><label>學位</label>
+      <select id="m-degree">
+        ${['學士','碩士','博士','其他'].map(d=>`<option value="${d}" ${e.degree===d?'selected':''}>${d}</option>`).join('')}
+      </select>
+    </div>
+    <div class="field"><label>校系</label><input type="text" id="m-school" value="${escapeHtml(e.school||'')}" placeholder="例如：台灣大學數學系"></div>
+    <div class="form-row">
+      <div class="field"><label>起始年月</label><input type="month" id="m-start" value="${e.startMonth||''}"></div>
+      <div class="field"><label>結束年月</label><input type="month" id="m-end" value="${e.endMonth||''}" ${e.ongoing?'disabled':''}></div>
+    </div>
+    <div class="field" style="display:flex;align-items:center;gap:8px;">
+      <input type="checkbox" id="m-ongoing" style="width:auto;" ${e.ongoing?'checked':''}>
+      <label for="m-ongoing" style="margin:0;">目前仍在學／至今</label>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" id="m-cancel">取消</button>
+      <button class="btn btn-primary" id="m-save">${existing?'儲存':'新增'}</button>
+    </div>
+  `);
+  $('#m-ongoing').addEventListener('change', ()=>{ $('#m-end').disabled = $('#m-ongoing').checked; });
   $('#m-cancel').addEventListener('click', closeModal);
   $('#m-save').addEventListener('click', async ()=>{
-    const text = $('#m-text').value.trim();
-    if(!text) return;
-    state.profile.teachingHistory = state.profile.teachingHistory || [];
-    state.profile.teachingHistory.push({ id: uid(), text });
+    const school = $('#m-school').value.trim();
+    if(!school){ $('#m-school').focus(); return; }
+    const data = {
+      id: existing ? existing.id : uid(),
+      degree: $('#m-degree').value,
+      school,
+      startMonth: $('#m-start').value,
+      endMonth: $('#m-ongoing').checked ? '' : $('#m-end').value,
+      ongoing: $('#m-ongoing').checked
+    };
+    state.profile.educationList = state.profile.educationList || [];
+    if(existing){
+      const idx = state.profile.educationList.findIndex(x=>x.id===existing.id);
+      state.profile.educationList[idx] = data;
+    } else {
+      state.profile.educationList.push(data);
+    }
     closeModal();
     await saveProfile();
     render();
   });
 }
+function addEducationItem(){ eduModal(null); }
+function editEducationItem(id){
+  const existing = (state.profile.educationList||[]).find(x=>x.id===id);
+  if(existing) eduModal(existing);
+}
 
-function addTestimonialItem(){
+/* ---------- teaching history ---------- */
+function teachModal(existing){
+  const t = existing || { school:'', title:'', startMonth:'', endMonth:'', ongoing:false };
   showModal(`
-    <h3>新增回饋</h3>
-    <div class="field"><label>回饋內容</label><textarea id="m-text" placeholder="家長或學生的回饋內容"></textarea></div>
-    <div class="field"><label>照片（選填）</label><input type="file" id="m-photo" accept="image/*"></div>
+    <h3>${existing?'編輯教學經歷':'新增教學經歷'}</h3>
+    <div class="field"><label>任職學校／機構</label><input type="text" id="m-school" value="${escapeHtml(t.school||'')}" placeholder="例如：OO補習班"></div>
+    <div class="field"><label>職稱（選填）</label><input type="text" id="m-title" value="${escapeHtml(t.title||'')}" placeholder="例如：數學老師"></div>
+    <div class="form-row">
+      <div class="field"><label>起始年月</label><input type="month" id="m-start" value="${t.startMonth||''}"></div>
+      <div class="field"><label>結束年月</label><input type="month" id="m-end" value="${t.endMonth||''}" ${t.ongoing?'disabled':''}></div>
+    </div>
+    <div class="field" style="display:flex;align-items:center;gap:8px;">
+      <input type="checkbox" id="m-ongoing" style="width:auto;" ${t.ongoing?'checked':''}>
+      <label for="m-ongoing" style="margin:0;">目前仍在職／至今</label>
+    </div>
     <div class="modal-actions">
       <button class="btn btn-ghost" id="m-cancel">取消</button>
-      <button class="btn btn-primary" id="m-save">新增</button>
+      <button class="btn btn-primary" id="m-save">${existing?'儲存':'新增'}</button>
+    </div>
+  `);
+  $('#m-ongoing').addEventListener('change', ()=>{ $('#m-end').disabled = $('#m-ongoing').checked; });
+  $('#m-cancel').addEventListener('click', closeModal);
+  $('#m-save').addEventListener('click', async ()=>{
+    const school = $('#m-school').value.trim();
+    if(!school){ $('#m-school').focus(); return; }
+    const data = {
+      id: existing ? existing.id : uid(),
+      school,
+      title: $('#m-title').value.trim(),
+      startMonth: $('#m-start').value,
+      endMonth: $('#m-ongoing').checked ? '' : $('#m-end').value,
+      ongoing: $('#m-ongoing').checked
+    };
+    state.profile.teachingHistory = state.profile.teachingHistory || [];
+    if(existing){
+      const idx = state.profile.teachingHistory.findIndex(x=>x.id===existing.id);
+      state.profile.teachingHistory[idx] = data;
+    } else {
+      state.profile.teachingHistory.push(data);
+    }
+    closeModal();
+    await saveProfile();
+    render();
+  });
+}
+function addTeachingItem(){ teachModal(null); }
+function editTeachingItem(id){
+  const existing = (state.profile.teachingHistory||[]).find(t=>t.id===id);
+  if(existing) teachModal(existing);
+}
+
+/* ---------- testimonials & class photos (text + optional photo) ---------- */
+function photoTextModal(arrayName, existing, title){
+  showModal(`
+    <h3>${existing?'編輯':'新增'}${title}</h3>
+    <div class="field"><label>內容</label><textarea id="m-text" placeholder="文字內容">${existing?escapeHtml(existing.text):''}</textarea></div>
+    ${existing && existing.photoUrl ? `<div style="margin-bottom:10px;"><img src="${existing.photoUrl}" class="no-save" draggable="false" oncontextmenu="return false;" style="width:64px;height:64px;border-radius:8px;object-fit:cover;"></div>` : ''}
+    <div class="field"><label>${existing&&existing.photoUrl?'更換照片（選填）':'照片（選填）'}</label><input type="file" id="m-photo" accept="image/*"></div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" id="m-cancel">取消</button>
+      <button class="btn btn-primary" id="m-save">${existing?'儲存':'新增'}</button>
     </div>
   `);
   $('#m-cancel').addEventListener('click', closeModal);
@@ -815,16 +1112,46 @@ function addTestimonialItem(){
     const text = $('#m-text').value.trim();
     if(!text) return;
     const file = $('#m-photo').files[0];
-    let photoUrl = '';
+    let photoUrl = existing ? (existing.photoUrl||'') : '';
     if(file){
-      try{ photoUrl = await uploadImage(file, 'testimonials'); }
+      try{ photoUrl = await uploadImage(file, arrayName); }
       catch(err){ showToast('照片上傳失敗：'+(err?.message||err)); }
     }
-    state.profile.testimonials = state.profile.testimonials || [];
-    state.profile.testimonials.push({ id: uid(), text, photoUrl });
+    state.profile[arrayName] = state.profile[arrayName] || [];
+    if(existing){
+      const idx = state.profile[arrayName].findIndex(t=>t.id===existing.id);
+      state.profile[arrayName][idx] = { id: existing.id, text, photoUrl };
+    } else {
+      state.profile[arrayName].push({ id: uid(), text, photoUrl });
+    }
     closeModal();
     await saveProfile();
     render();
+  });
+}
+function addTestimonialItem(){ photoTextModal('testimonials', null, '回饋'); }
+function editTestimonialItem(id){
+  const existing = (state.profile.testimonials||[]).find(t=>t.id===id);
+  if(existing) photoTextModal('testimonials', existing, '回饋');
+}
+function addClassPhotoItem(){ photoTextModal('classPhotos', null, '上課畫面'); }
+function editClassPhotoItem(id){
+  const existing = (state.profile.classPhotos||[]).find(t=>t.id===id);
+  if(existing) photoTextModal('classPhotos', existing, '上課畫面');
+}
+
+/* ---------- lightbox (tap photo to view full-screen) ---------- */
+function openLightbox(url){
+  if(!url) return;
+  const div = document.createElement('div');
+  div.className = 'lightbox-backdrop';
+  div.innerHTML = `<img src="${url}" class="no-save" draggable="false" oncontextmenu="return false;">`;
+  div.addEventListener('click', ()=> div.remove());
+  document.body.appendChild(div);
+}
+function bindLightboxImages(root){
+  root.querySelectorAll('.lightbox-img').forEach(img=>{
+    img.addEventListener('click', ()=> openLightbox(img.dataset.src));
   });
 }
 
@@ -857,25 +1184,47 @@ async function copyAboutLink(){
   }
 }
 
+function previewProfile(){
+  const base = getBaseUrl();
+  if(!base){
+    showModal(`
+      <h3>目前無法預覽</h3>
+      <p>這個畫面現在是 Claude 對話裡的預覽模式，沒有真正的網址，沒辦法開啟預覽。請先把這個頁面發布到一個真正的網址再試一次。</p>
+      <div class="modal-actions"><button class="btn btn-primary" id="m-close">了解</button></div>
+    `);
+    $('#m-close').addEventListener('click', closeModal);
+    return;
+  }
+  window.open(`${base}#/about`, '_blank');
+}
+
 function renderProfilePage(){
   const area = $('#mainArea');
   const p = state.profile || {};
   area.innerHTML = `
     <div class="card" style="text-align:center;">
-      ${p.photoUrl ? `<img src="${p.photoUrl}" class="no-save" draggable="false" oncontextmenu="return false;" style="width:120px;height:120px;border-radius:50%;object-fit:cover;margin-bottom:12px;">` : ''}
+      ${p.photoUrl ? `<img src="${p.photoUrl}" class="no-save lightbox-img" data-src="${p.photoUrl}" draggable="false" oncontextmenu="return false;" style="width:120px;height:120px;border-radius:50%;object-fit:cover;margin-bottom:12px;cursor:zoom-in;">` : ''}
       <div style="font-family:'Noto Serif TC',serif;font-size:22px;font-weight:700;">${escapeHtml(p.name||'')}</div>
     </div>
-    ${p.education ? `<div class="card"><h3 class="section-title">學歷</h3><div style="font-size:14px;line-height:1.8;white-space:pre-wrap;">${escapeHtml(p.education)}</div></div>` : ''}
+    ${(p.educationList && p.educationList.length) ? `<div class="card"><h3 class="section-title">學歷</h3>${p.educationList.map(e=>`<div class="sched-item"><span class="sched-when">${eduLine(e)}</span></div>`).join('')}</div>` : ''}
     ${p.experience ? `<div class="card"><h3 class="section-title">經歷</h3><div style="font-size:14px;line-height:1.8;white-space:pre-wrap;">${escapeHtml(p.experience)}</div></div>` : ''}
-    ${(p.teachingHistory && p.teachingHistory.length) ? `<div class="card"><h3 class="section-title">教學經歷</h3>${p.teachingHistory.map(t=>`<div class="sched-item"><span class="sched-when">${escapeHtml(t.text)}</span></div>`).join('')}</div>` : ''}
+    ${(p.teachingHistory && p.teachingHistory.length) ? `<div class="card"><h3 class="section-title">教學經歷</h3>${p.teachingHistory.map(t=>`<div class="sched-item"><span class="sched-when">${teachLine(t)}</span></div>`).join('')}</div>` : ''}
     ${(p.testimonials && p.testimonials.length) ? `<div class="card"><h3 class="section-title">家長及學生回饋</h3>${p.testimonials.map(t=>`
       <div class="sched-item" style="align-items:flex-start;">
         <span class="sched-when" style="display:flex;gap:10px;white-space:pre-wrap;">
-          ${t.photoUrl ? `<img src="${t.photoUrl}" class="no-save" draggable="false" oncontextmenu="return false;" style="width:48px;height:48px;border-radius:8px;object-fit:cover;flex-shrink:0;">` : ''}
+          ${t.photoUrl ? `<img src="${t.photoUrl}" class="no-save lightbox-img" data-src="${t.photoUrl}" draggable="false" oncontextmenu="return false;" style="width:48px;height:48px;border-radius:8px;object-fit:cover;flex-shrink:0;cursor:zoom-in;">` : ''}
+          <span>${escapeHtml(t.text)}</span>
+        </span>
+      </div>`).join('')}</div>` : ''}
+    ${(p.classPhotos && p.classPhotos.length) ? `<div class="card"><h3 class="section-title">上課畫面分享</h3>${p.classPhotos.map(t=>`
+      <div class="sched-item" style="align-items:flex-start;">
+        <span class="sched-when" style="display:flex;gap:10px;white-space:pre-wrap;">
+          ${t.photoUrl ? `<img src="${t.photoUrl}" class="no-save lightbox-img" data-src="${t.photoUrl}" draggable="false" oncontextmenu="return false;" style="width:48px;height:48px;border-radius:8px;object-fit:cover;flex-shrink:0;cursor:zoom-in;">` : ''}
           <span>${escapeHtml(t.text)}</span>
         </span>
       </div>`).join('')}</div>` : ''}
   `;
+  bindLightboxImages(area);
 }
 
 function renderOverview(){
@@ -1576,6 +1925,10 @@ function renderModeUI(){
     $('#overviewBtn').textContent = state.showOverview ? '← 返回學生檢視' : '📊 全部學生總覽';
     $('#profileEditBtn').textContent = state.showProfileEdit ? '← 返回學生檢視' : '👩\u200d🏫 編輯老師介紹頁';
   }
+  const ABOUT_TITLE = '柏萱老師的數學課👩🏻\u200d🏫🌷';
+  const DEFAULT_TITLE = '數學家教紀錄📝';
+  $('#mainTitle').textContent = state.lockedProfile ? ABOUT_TITLE : DEFAULT_TITLE;
+  document.title = state.lockedProfile ? ABOUT_TITLE : DEFAULT_TITLE;
   const s = currentStudent();
   $('#subline').textContent = state.lockedProfile
     ? '老師介紹頁'
