@@ -300,7 +300,7 @@ function uid(){ return String(Date.now())+Math.floor(Math.random()*1000); }
 const DEFAULT_APP_TAGLINE = '希望孩子的數學能夠越來越穩定進步💪🏻讓我們一起努力吧🌷';
 const DEFAULT_ABOUT_TAGLINE = '10年以上高中數學教學經驗｜合格教師證｜雙碩士｜線上高中數學教師🧮';
 function defaultProfile(){
-  return { name:'', photoUrl:'', education:'', experience:'', experiencePhotoUrl:'', educationList:[], teachingHistory:[], testimonials:[], classPhotos:[], appTagline: DEFAULT_APP_TAGLINE, aboutTagline: DEFAULT_ABOUT_TAGLINE };
+  return { name:'', photoUrl:'', education:'', experience:'', experiencePhotoUrl:'', educationList:[], teachingHistory:[], testimonials:[], classPhotos:[], appTagline: DEFAULT_APP_TAGLINE, aboutTagline: DEFAULT_ABOUT_TAGLINE, email:'', lineId:'' };
 }
 function moveArrayItem(arr, id, dir){
   const idx = arr.findIndex(x=>x.id===id);
@@ -397,6 +397,8 @@ async function loadData(){
     if(p.classPhotos===undefined){ p.classPhotos = []; profileChanged = true; }
     if(p.appTagline===undefined){ p.appTagline = DEFAULT_APP_TAGLINE; profileChanged = true; }
     if(p.aboutTagline===undefined){ p.aboutTagline = DEFAULT_ABOUT_TAGLINE; profileChanged = true; }
+    if(p.email===undefined){ p.email = ''; profileChanged = true; }
+    if(p.lineId===undefined){ p.lineId = ''; profileChanged = true; }
     if(p.educationList===undefined){
       profileChanged = true;
       if(typeof p.education === 'string' && p.education.trim()){
@@ -869,6 +871,14 @@ function renderProfileEditor(){
     </div>
 
     <div class="card">
+      <h3 class="section-title">聯絡方式</h3>
+      <p style="font-size:12px;color:var(--ink-soft);margin:0 0 12px;">會顯示在公開介紹頁最下面，兩項都選填，留空就不會顯示。</p>
+      <div class="field"><label>Email</label><input type="email" id="p-email" value="${escapeHtml(p.email||'')}" placeholder="例如：teacher@example.com"></div>
+      <div class="field"><label>LINE ID</label><input type="text" id="p-lineId" value="${escapeHtml(p.lineId||'')}" placeholder="例如：boya_math"></div>
+      <div style="margin-top:6px;"><button class="btn btn-primary" id="saveContactBtn">儲存聯絡方式</button></div>
+    </div>
+
+    <div class="card">
       <h3 class="section-title">公開介紹頁</h3>
       <p style="font-size:13px;color:var(--ink-soft);margin:0 0 12px;">👀 累積瀏覽次數：${state.viewCounts.about || 0} 次</p>
       <div style="display:flex;gap:12px;flex-wrap:wrap;">
@@ -878,6 +888,12 @@ function renderProfileEditor(){
     </div>
   `;
 
+  $('#saveContactBtn').addEventListener('click', async ()=>{
+    p.email = $('#p-email').value.trim();
+    p.lineId = $('#p-lineId').value.trim();
+    await saveProfile();
+    showToast('已儲存');
+  });
   $('#uploadPhotoBtn').addEventListener('click', ()=> $('#photoFile').click());
   $('#photoFile').addEventListener('change', handleProfilePhotoUpload);
   $('#expPhotoFile').addEventListener('change', async (e)=>{
@@ -1350,6 +1366,10 @@ function renderProfilePage(){
           <span>${escapeHtml(t.text)}</span>
         </span>
       </div>`).join('')}</div>` : ''}
+    ${(p.email || p.lineId) ? `<div class="card"><h3 class="section-title">聯絡方式</h3>
+      ${p.email ? `<div class="sched-item"><span class="sched-when">✉️ Email</span><a href="mailto:${escapeHtml(p.email)}" style="color:var(--teal);font-weight:600;">${escapeHtml(p.email)}</a></div>` : ''}
+      ${p.lineId ? `<div class="sched-item"><span class="sched-when">💬 LINE ID</span><span style="font-weight:600;">${escapeHtml(p.lineId)}</span></div>` : ''}
+    </div>` : ''}
   `;
   bindLightboxImages(area);
 }
