@@ -202,10 +202,11 @@
 
   <div id="storageWarning" style="display:none" class="storage-warning"></div>
 
-  <div id="backupRow" style="display:none;gap:18px;margin-bottom:16px;">
+  <div id="backupRow" style="display:none;gap:18px;margin-bottom:16px;flex-wrap:wrap;">
     <button class="add-trigger" id="exportBtn">↓ 匯出備份</button>
     <button class="add-trigger" id="importBtn">↑ 匯入備份</button>
     <input type="file" id="importFile" accept="application/json" style="display:none">
+    <button class="add-trigger" id="logoutBtn" style="color:var(--red);">🔒 登出</button>
   </div>
 
   <div id="mainArea"></div>
@@ -2155,8 +2156,20 @@ $('#profileEditBtn').addEventListener('click', ()=>{ state.showProfileEdit = !st
 $('#exportBtn').addEventListener('click', exportBackup);
 $('#importBtn').addEventListener('click', ()=> $('#importFile').click());
 $('#importFile').addEventListener('change', handleImportFile);
+$('#logoutBtn').addEventListener('click', ()=>{
+  showModal(`
+    <h3>登出</h3>
+    <p>確定要登出嗎？這台裝置之後打開網站會再次要求輸入密碼。</p>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" id="m-cancel">取消</button>
+      <button class="btn btn-primary" id="m-confirm" style="background:var(--red)">登出</button>
+    </div>
+  `);
+  $('#m-cancel').addEventListener('click', closeModal);
+  $('#m-confirm').addEventListener('click', logoutTeacher);
+});
 
-const TEACHER_PASSWORD = 'nono741852';
+const TEACHER_PASSWORD = '204426';
 const UNLOCK_KEY = 'tutorlog_teacher_unlocked';
 
 function isTeacherUnlocked(){
@@ -2165,6 +2178,10 @@ function isTeacherUnlocked(){
 }
 function rememberTeacherUnlocked(){
   try{ localStorage.setItem(UNLOCK_KEY, 'true'); }catch(e){}
+}
+function logoutTeacher(){
+  try{ localStorage.removeItem(UNLOCK_KEY); }catch(e){}
+  location.reload();
 }
 
 function showPasswordGate(){
