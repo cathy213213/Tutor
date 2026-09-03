@@ -297,8 +297,10 @@ function minuteOptions(selected){
   return [0,15,30,45].map(m=>`<option value="${m}" ${m===selected?'selected':''}>${pad(m)}</option>`).join('');
 }
 function uid(){ return String(Date.now())+Math.floor(Math.random()*1000); }
+const DEFAULT_APP_TAGLINE = '希望孩子的數學能夠越來越穩定進步💪🏻讓我們一起努力吧🌷';
+const DEFAULT_ABOUT_TAGLINE = '10年以上高中數學教學經驗｜合格教師證｜雙碩士｜線上高中數學教師🧮';
 function defaultProfile(){
-  return { name:'', photoUrl:'', education:'', experience:'', experiencePhotoUrl:'', educationList:[], teachingHistory:[], testimonials:[], classPhotos:[] };
+  return { name:'', photoUrl:'', education:'', experience:'', experiencePhotoUrl:'', educationList:[], teachingHistory:[], testimonials:[], classPhotos:[], appTagline: DEFAULT_APP_TAGLINE, aboutTagline: DEFAULT_ABOUT_TAGLINE };
 }
 function moveArrayItem(arr, id, dir){
   const idx = arr.findIndex(x=>x.id===id);
@@ -393,6 +395,8 @@ async function loadData(){
     if(p.teachingHistory===undefined){ p.teachingHistory = []; profileChanged = true; }
     if(p.testimonials===undefined){ p.testimonials = []; profileChanged = true; }
     if(p.classPhotos===undefined){ p.classPhotos = []; profileChanged = true; }
+    if(p.appTagline===undefined){ p.appTagline = DEFAULT_APP_TAGLINE; profileChanged = true; }
+    if(p.aboutTagline===undefined){ p.aboutTagline = DEFAULT_ABOUT_TAGLINE; profileChanged = true; }
     if(p.educationList===undefined){
       profileChanged = true;
       if(typeof p.education === 'string' && p.education.trim()){
@@ -461,9 +465,9 @@ async function loadData(){
   }
   if(!state.viewTracked){
     state.viewTracked = true;
-    if(state.lockedProfile) trackView('about');
-    else if(state.lockedParent && state.currentStudentId) trackView(state.currentStudentId+'_parent');
-    else if(state.lockedStudent && state.currentStudentId) trackView(state.currentStudentId+'_student');
+    if(state.lockedProfile) trackViewOncePerDevice('about');
+    else if(state.lockedParent && state.currentStudentId) trackViewOncePerDevice(state.currentStudentId+'_parent');
+    else if(state.lockedStudent && state.currentStudentId) trackViewOncePerDevice(state.currentStudentId+'_student');
   }
   state.loaded = true;
   render();
@@ -473,6 +477,16 @@ async function loadData(){
 function trackView(key){
   if(!db) return;
   setDoc(doc(db,'tutorlog','viewCounts'), { [key]: increment(1) }, { merge: true }).catch(()=>{});
+}
+
+function trackViewOncePerDevice(key){
+  const flagKey = 'tutorlog_viewed_'+key;
+  const today = toKey(new Date());
+  try{
+    if(localStorage.getItem(flagKey) === today) return;
+    localStorage.setItem(flagKey, today);
+  }catch(e){}
+  trackView(key);
 }
 
 function attachLiveListeners(){
@@ -775,6 +789,8 @@ function renderProfileEditor(){
         </div>
       </div>
       <div class="field"><label>姓名</label><input type="text" id="p-name" value="${escapeHtml(p.name||'')}"></div>
+      <div class="field"><label>App 內鼓勵語（老師／家長／學生畫面都會看到）</label><textarea id="p-appTagline" placeholder="例如：希望孩子的數學能夠越來越穩定進步💪🏻讓我們一起努力吧🌷">${p.appTagline||''}</textarea></div>
+      <div class="field"><label>介紹頁副標語（只有公開介紹頁會顯示）</label><textarea id="p-aboutTagline" placeholder="例如：10年以上高中數學教學經驗｜合格教師證｜雙碩士">${p.aboutTagline||''}</textarea></div>
       <div class="field"><label>經歷</label><textarea id="p-experience" placeholder="例如：曾任OO補習班數學教師">${p.experience||''}</textarea></div>
       <div class="field">
         <label>經歷證明照片（選填）</label>
@@ -887,8 +903,11 @@ function renderProfileEditor(){
   }
   $('#saveProfileBtn').addEventListener('click', async ()=>{
     p.name = $('#p-name').value.trim();
+    p.appTagline = $('#p-appTagline').value.trim();
+    p.aboutTagline = $('#p-aboutTagline').value.trim();
     p.experience = $('#p-experience').value.trim();
     await saveProfile();
+    renderModeUI();
     showToast('已儲存');
   });
   $('#addEduBtn').addEventListener('click', addEducationItem);
@@ -2047,8 +2066,9 @@ function renderModeUI(){
   const DEFAULT_TITLE = '數學家教紀錄📝';
   $('#mainTitle').textContent = state.lockedProfile ? ABOUT_TITLE : DEFAULT_TITLE;
   document.title = state.lockedProfile ? ABOUT_TITLE : DEFAULT_TITLE;
-  const ABOUT_TAGLINE = '10年以上高中數學教學經驗｜合格教師證｜雙碩士｜線上高中數學教師🧮';
-  const DEFAULT_TAGLINE = '希望孩子的數學能夠越來越穩定進步💪🏻讓我們一起努力吧🌷';
+  const prof = state.profile || {};
+  const ABOUT_TAGLINE = prof.aboutTagline || DEFAULT_ABOUT_TAGLINE;
+  const DEFAULT_TAGLINE = prof.appTagline || DEFAULT_APP_TAGLINE;
   $('#encourageText').textContent = state.lockedProfile ? ABOUT_TAGLINE : DEFAULT_TAGLINE;
   const s = currentStudent();
   $('#subline').textContent = state.lockedProfile
