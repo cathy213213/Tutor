@@ -190,7 +190,7 @@
         <button id="btnStudent">學生檢視</button>
       </div>
     </div>
-    <p class="encourage">希望孩子的數學能夠越來越穩定進步💪🏻讓我們一起努力吧🌷</p>
+    <p class="encourage" id="encourageText">希望孩子的數學能夠越來越穩定進步💪🏻讓我們一起努力吧🌷</p>
   </header>
 
   <div id="overviewRow" style="display:none;margin-bottom:16px;gap:18px;">
@@ -2012,10 +2012,13 @@ function renderModeUI(){
     $('#overviewBtn').textContent = state.showOverview ? '← 返回學生檢視' : '📊 全部學生總覽';
     $('#profileEditBtn').textContent = state.showProfileEdit ? '← 返回學生檢視' : '👩\u200d🏫 編輯老師介紹頁';
   }
-  const ABOUT_TITLE = '柏萱老師的數學課👩🏻\u200d🏫🌷';
+  const ABOUT_TITLE = '柏萱老師👩🏻\u200d🏫 ｜高中數學教師';
   const DEFAULT_TITLE = '數學家教紀錄📝';
   $('#mainTitle').textContent = state.lockedProfile ? ABOUT_TITLE : DEFAULT_TITLE;
   document.title = state.lockedProfile ? ABOUT_TITLE : DEFAULT_TITLE;
+  const ABOUT_TAGLINE = '10年以上高中數學教學經驗｜合格教師證｜雙碩士｜線上高中數學教師🧮';
+  const DEFAULT_TAGLINE = '希望孩子的數學能夠越來越穩定進步💪🏻讓我們一起努力吧🌷';
+  $('#encourageText').textContent = state.lockedProfile ? ABOUT_TAGLINE : DEFAULT_TAGLINE;
   const s = currentStudent();
   $('#subline').textContent = state.lockedProfile
     ? '老師介紹頁'
