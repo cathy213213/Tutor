@@ -299,6 +299,13 @@ function uid(){ return String(Date.now())+Math.floor(Math.random()*1000); }
 function defaultProfile(){
   return { name:'', photoUrl:'', education:'', experience:'', experiencePhotoUrl:'', educationList:[], teachingHistory:[], testimonials:[], classPhotos:[] };
 }
+function moveArrayItem(arr, id, dir){
+  const idx = arr.findIndex(x=>x.id===id);
+  if(idx<0) return;
+  const swapWith = dir==='up' ? idx-1 : idx+1;
+  if(swapWith<0 || swapWith>=arr.length) return;
+  [arr[idx], arr[swapWith]] = [arr[swapWith], arr[idx]];
+}
 function formatMonthRange(startMonth, endMonth, ongoing){
   const fmt = (m)=> m ? m.replace('-','/') : '';
   if(ongoing) return `${fmt(startMonth)} - 至今`;
@@ -781,13 +788,15 @@ function renderProfileEditor(){
 
     <div class="card">
       <h3 class="section-title">學歷</h3>
-      ${p.educationList.length ? p.educationList.map(e=>`
+      ${p.educationList.length ? p.educationList.map((e,i)=>`
         <div class="sched-item" style="align-items:flex-start;">
           <span class="sched-when" style="display:flex;gap:10px;">
             ${e.certPhotoUrl ? `<img src="${e.certPhotoUrl}" class="no-save lightbox-img" data-src="${e.certPhotoUrl}" draggable="false" oncontextmenu="return false;" style="width:40px;height:40px;border-radius:8px;object-fit:cover;flex-shrink:0;cursor:zoom-in;">` : ''}
             <span>${eduLine(e)}</span>
           </span>
-          <span style="display:flex;gap:12px;flex-shrink:0;">
+          <span style="display:flex;gap:10px;flex-shrink:0;align-items:center;">
+            <button data-move-edu="${e.id}" data-dir="up" ${i===0?'disabled style="opacity:0.3;"':''}>▲</button>
+            <button data-move-edu="${e.id}" data-dir="down" ${i===p.educationList.length-1?'disabled style="opacity:0.3;"':''}>▼</button>
             <button data-edit-edu="${e.id}">編輯</button>
             <button data-del-edu="${e.id}" style="color:var(--red)">刪除</button>
           </span>
@@ -797,10 +806,12 @@ function renderProfileEditor(){
 
     <div class="card">
       <h3 class="section-title">教學經歷</h3>
-      ${p.teachingHistory.length ? p.teachingHistory.map(t=>`
+      ${p.teachingHistory.length ? p.teachingHistory.map((t,i)=>`
         <div class="sched-item">
           <span class="sched-when">${teachLine(t)}</span>
-          <span style="display:flex;gap:12px">
+          <span style="display:flex;gap:10px;align-items:center;">
+            <button data-move-teach="${t.id}" data-dir="up" ${i===0?'disabled style="opacity:0.3;"':''}>▲</button>
+            <button data-move-teach="${t.id}" data-dir="down" ${i===p.teachingHistory.length-1?'disabled style="opacity:0.3;"':''}>▼</button>
             <button data-edit-teach="${t.id}">編輯</button>
             <button data-del-teach="${t.id}" style="color:var(--red)">刪除</button>
           </span>
@@ -883,10 +894,24 @@ function renderProfileEditor(){
   $('#addTeachBtn').addEventListener('click', addTeachingItem);
   $('#addTestiBtn').addEventListener('click', addTestimonialItem);
   $('#addClassPhotoBtn').addEventListener('click', addClassPhotoItem);
+  area.querySelectorAll('[data-move-edu]').forEach(btn=>{
+    btn.addEventListener('click', async ()=>{
+      moveArrayItem(p.educationList, btn.dataset.moveEdu, btn.dataset.dir);
+      await saveProfile();
+      render();
+    });
+  });
   area.querySelectorAll('[data-edit-edu]').forEach(btn=> btn.addEventListener('click', ()=> editEducationItem(btn.dataset.editEdu)));
   area.querySelectorAll('[data-del-edu]').forEach(btn=>{
     btn.addEventListener('click', async ()=>{
       p.educationList = p.educationList.filter(x=>x.id!==btn.dataset.delEdu);
+      await saveProfile();
+      render();
+    });
+  });
+  area.querySelectorAll('[data-move-teach]').forEach(btn=>{
+    btn.addEventListener('click', async ()=>{
+      moveArrayItem(p.teachingHistory, btn.dataset.moveTeach, btn.dataset.dir);
       await saveProfile();
       render();
     });
@@ -1269,10 +1294,15 @@ function previewProfile(){
 function renderProfilePage(){
   const area = $('#mainArea');
   const p = state.profile || {};
+  const hasPhotos = !!(p.photoUrl || p.experiencePhotoUrl
+    || (p.educationList||[]).some(e=>e.certPhotoUrl)
+    || (p.testimonials||[]).some(t=>t.photoUrl)
+    || (p.classPhotos||[]).some(t=>t.photoUrl));
   area.innerHTML = `
     <div class="card" style="text-align:center;">
       ${p.photoUrl ? `<img src="${p.photoUrl}" class="no-save lightbox-img" data-src="${p.photoUrl}" draggable="false" oncontextmenu="return false;" style="width:120px;height:120px;border-radius:50%;object-fit:cover;margin-bottom:12px;cursor:zoom-in;">` : ''}
       <div style="font-family:'Noto Serif TC',serif;font-size:22px;font-weight:700;">${escapeHtml(p.name||'')}</div>
+      ${hasPhotos ? `<p style="font-size:12px;color:var(--ink-soft);margin:8px 0 0;">點擊圖片可放大查看證書與回饋截圖</p>` : ''}
     </div>
     ${(p.educationList && p.educationList.length) ? `<div class="card"><h3 class="section-title">學歷</h3>${p.educationList.map(e=>`
       <div class="sched-item" style="align-items:flex-start;">
@@ -2126,7 +2156,62 @@ $('#exportBtn').addEventListener('click', exportBackup);
 $('#importBtn').addEventListener('click', ()=> $('#importFile').click());
 $('#importFile').addEventListener('change', handleImportFile);
 
-loadData();
+const TEACHER_PASSWORD = 'nono741852';
+const UNLOCK_KEY = 'tutorlog_teacher_unlocked';
+
+function isTeacherUnlocked(){
+  try{ return localStorage.getItem(UNLOCK_KEY) === 'true'; }
+  catch(e){ return false; }
+}
+function rememberTeacherUnlocked(){
+  try{ localStorage.setItem(UNLOCK_KEY, 'true'); }catch(e){}
+}
+
+function showPasswordGate(){
+  const overlay = document.createElement('div');
+  overlay.id = 'authGate';
+  overlay.style.cssText = 'position:fixed;inset:0;background:var(--paper);z-index:200;display:flex;align-items:center;justify-content:center;padding:24px;';
+  overlay.innerHTML = `
+    <div class="card" style="max-width:320px;width:100%;">
+      <h3 class="section-title" style="text-align:center;">🔒 老師登入</h3>
+      <div class="field"><label>密碼</label><input type="password" id="gatePw" placeholder="請輸入密碼"></div>
+      <div class="field" style="display:flex;align-items:center;gap:8px;">
+        <input type="checkbox" id="gateRemember" style="width:auto;">
+        <label for="gateRemember" style="margin:0;">記住這個裝置</label>
+      </div>
+      <p id="gateError" style="color:var(--red);font-size:13px;display:none;margin:0 0 10px;">密碼錯誤，請再試一次</p>
+      <button class="btn btn-primary" id="gateSubmit" style="width:100%;">登入</button>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  const pwInput = overlay.querySelector('#gatePw');
+  const submit = ()=>{
+    if(pwInput.value === TEACHER_PASSWORD){
+      if(overlay.querySelector('#gateRemember').checked) rememberTeacherUnlocked();
+      overlay.remove();
+      loadData();
+    } else {
+      overlay.querySelector('#gateError').style.display = 'block';
+      pwInput.value = '';
+      pwInput.focus();
+    }
+  };
+  overlay.querySelector('#gateSubmit').addEventListener('click', submit);
+  pwInput.addEventListener('keydown', (e)=>{ if(e.key==='Enter') submit(); });
+  setTimeout(()=> pwInput.focus(), 50);
+}
+
+function boot(){
+  applyRouteFromHash();
+  const isPublicRoute = state.lockedParent || state.lockedStudent || state.lockedProfile;
+  if(isPublicRoute || isTeacherUnlocked()){
+    loadData();
+  } else {
+    showPasswordGate();
+  }
+}
+
+boot();
 </script>
 </body>
 </html>
