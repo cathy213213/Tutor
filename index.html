@@ -97,7 +97,7 @@
   .day .dot.dot-schedule{background:var(--teal);}
   .dot-row{display:flex;gap:2px;margin-top:2px;justify-content:center;flex-wrap:wrap;}
   .dot-row .dot{margin-top:0;}
-  .dot-exam{background:#7C5CFC;}
+  .day .dot.dot-exam{background:#7C5CFC;}
   .exam-badge{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:6px;vertical-align:middle;}
 
   /* overview calendar: bigger cells showing time+name inline */
@@ -476,6 +476,14 @@ async function loadData(){
   state.schedules = expanded;
   if(schedChanged) saveSchedules();
 
+  // migrate exam entries without an endDate (older single-day format)
+  let examChanged = false;
+  state.examDates = state.examDates.map(x=>{
+    if(x.endDate===undefined){ examChanged = true; return { ...x, endDate: x.date }; }
+    return x;
+  });
+  if(examChanged) saveExamDates();
+
   applyRouteFromHash();
   if(state.students.length && !state.currentStudentId && !state.lockedParent && !state.lockedStudent){
     state.currentStudentId = state.students[0].id;
@@ -604,12 +612,31 @@ function monthSchedulesFor(sid){
 /* ---------- exam dates ---------- */
 function monthExamsFor(sid){
   const y = state.cursor.getFullYear(), m = state.cursor.getMonth();
-  const prefix = `${y}-${pad(m+1)}-`;
-  return state.examDates.filter(x=>x.studentId===sid && x.date.startsWith(prefix))
-    .sort((a,b)=> a.date.localeCompare(b.date));
+  const monthStart = `${y}-${pad(m+1)}-01`;
+  const monthEnd = `${y}-${pad(m+1)}-31`;
+  return state.examDates.filter(x=>{
+    if(x.studentId!==sid) return false;
+    const start = x.date, end = x.endDate || x.date;
+    return start <= monthEnd && end >= monthStart;
+  }).sort((a,b)=> a.date.localeCompare(b.date));
 }
 function examTypesForDate(sid, dateKey){
-  return state.examDates.filter(x=>x.studentId===sid && x.date===dateKey).map(x=>x.type);
+  return state.examDates.filter(x=>{
+    if(x.studentId!==sid) return false;
+    const start = x.date, end = x.endDate || x.date;
+    return dateKey >= start && dateKey <= end;
+  }).map(x=>x.type);
+}
+function examRangeLabel(ex){
+  const [sy,sm,sd] = ex.date.split('-');
+  const sdow = new Date(ex.date+'T00:00:00').getDay();
+  const startLabel = `${Number(sm)}/${Number(sd)}（${dayNames[sdow]}）`;
+  const end = ex.endDate || ex.date;
+  if(end === ex.date) return startLabel;
+  const [ey,em,ed] = end.split('-');
+  const edow = new Date(end+'T00:00:00').getDay();
+  const endLabel = `${Number(em)}/${Number(ed)}（${dayNames[edow]}）`;
+  return `${startLabel} - ${endLabel}`;
 }
 function occurrencesForDate(sid, dateKey){
   return state.schedules.filter(s=>s.studentId===sid && s.date===dateKey)
@@ -783,10 +810,8 @@ function renderStudentView(){
     ${monthExamsFor(s.id).length ? `<div class="card">
       <h3 class="section-title">重要考試日期</h3>
       ${monthExamsFor(s.id).map(ex=>{
-        const dow = new Date(ex.date+'T00:00:00').getDay();
-        const [yy,mm,dd] = ex.date.split('-');
         const info = EXAM_TYPES[ex.type] || { label: ex.type };
-        return `<div class="sched-item"><span class="sched-when"><span class="exam-badge" style="background:${EXAM_COLOR}"></span>${info.label}　${Number(mm)}/${Number(dd)}（${dayNames[dow]}）</span></div>`;
+        return `<div class="sched-item"><span class="sched-when"><span class="exam-badge" style="background:${EXAM_COLOR}"></span>${info.label}　${examRangeLabel(ex)}</span></div>`;
       }).join('')}
     </div>` : ''}
   `;
@@ -1740,7 +1765,7 @@ function deleteSchedule(id){
 }
 
 function examModal(sid, existing){
-  const e = existing || { type:'mid1', date: toKey(new Date()) };
+  const e = existing || { type:'mid1', date: toKey(new Date()), endDate: toKey(new Date()) };
   showModal(`
     <h3>${existing?'編輯考試日期':'新增考試日期'}</h3>
     <div class="field"><label>類型</label>
@@ -1748,7 +1773,11 @@ function examModal(sid, existing){
         ${Object.keys(EXAM_TYPES).map(k=>`<option value="${k}" ${e.type===k?'selected':''}>${EXAM_TYPES[k].label}</option>`).join('')}
       </select>
     </div>
-    <div class="field"><label>日期</label><input type="date" id="m-date" value="${e.date}"></div>
+    <div class="form-row">
+      <div class="field"><label>開始日期</label><input type="date" id="m-date" value="${e.date}"></div>
+      <div class="field"><label>結束日期</label><input type="date" id="m-endDate" value="${e.endDate||e.date}"></div>
+    </div>
+    <p style="font-size:11px;color:var(--ink-soft);margin:-6px 0 10px;">只有一天的考試，兩個日期填一樣即可</p>
     <div class="modal-actions">
       <button class="btn btn-ghost" id="m-cancel">取消</button>
       <button class="btn btn-primary" id="m-save">${existing?'儲存':'新增'}</button>
@@ -1758,7 +1787,9 @@ function examModal(sid, existing){
   $('#m-save').addEventListener('click', async ()=>{
     const date = $('#m-date').value;
     if(!date) return;
-    const data = { id: existing ? existing.id : uid(), studentId: sid, type: $('#m-type').value, date };
+    let endDate = $('#m-endDate').value || date;
+    if(endDate < date) endDate = date;
+    const data = { id: existing ? existing.id : uid(), studentId: sid, type: $('#m-type').value, date, endDate };
     if(existing){
       const idx = state.examDates.findIndex(x=>x.id===existing.id);
       state.examDates[idx] = data;
@@ -1899,11 +1930,9 @@ function renderMain(){
     <div class="card">
       <h3 class="section-title">重要考試日期</h3>
       ${monthExams.length ? monthExams.map(ex=>{
-        const dow = new Date(ex.date+'T00:00:00').getDay();
-        const [y,m,d] = ex.date.split('-');
         const info = EXAM_TYPES[ex.type] || { label: ex.type };
         return `<div class="sched-item">
-          <span class="sched-when"><span class="exam-badge" style="background:${EXAM_COLOR}"></span>${info.label}　${Number(m)}/${Number(d)}（${dayNames[dow]}）</span>
+          <span class="sched-when"><span class="exam-badge" style="background:${EXAM_COLOR}"></span>${info.label}　${examRangeLabel(ex)}</span>
           ${state.viewMode==='teacher' ? `
             <span style="display:flex;gap:12px">
               <button data-edit-exam="${ex.id}">編輯</button>
