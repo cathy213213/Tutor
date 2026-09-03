@@ -95,6 +95,10 @@
   .day.selected{outline:2px solid var(--ink);outline-offset:1px;}
   .day .dot{width:5px;height:5px;border-radius:50%;background:var(--red);margin-top:2px;}
   .day .dot.dot-schedule{background:var(--teal);}
+  .dot-row{display:flex;gap:2px;margin-top:2px;justify-content:center;flex-wrap:wrap;}
+  .dot-row .dot{margin-top:0;}
+  .dot-exam{background:#7C5CFC;}
+  .exam-badge{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:6px;vertical-align:middle;}
 
   /* overview calendar: bigger cells showing time+name inline */
   .ov-grid7{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;}
@@ -247,6 +251,7 @@ let state = {
   lessons: [],         // {id, studentId, date, hours, topics, homework}
   schedules: [],        // {id, studentId, mode:'weekly'|'once', dayOfWeek, date, hour, minute}
   payments: [],         // {id, studentId, month:'YYYY-MM', paid:true}
+  examDates: [],        // {id, studentId, type:'mid1'|'mid2'|'mock', date:'YYYY-MM-DD'}
   summaries: [],        // {id, studentId, month:'YYYY-MM', text}
   currentStudentId: null,
   viewMode: 'teacher',
@@ -297,6 +302,13 @@ function minuteOptions(selected){
   return [0,15,30,45].map(m=>`<option value="${m}" ${m===selected?'selected':''}>${pad(m)}</option>`).join('');
 }
 function uid(){ return String(Date.now())+Math.floor(Math.random()*1000); }
+const EXAM_COLOR = '#7C5CFC';
+const EXAM_TYPES = {
+  mid1: { label:'第一次期中考' },
+  mid2: { label:'第二次期中考' },
+  final: { label:'期末考' },
+  mock: { label:'模擬考' }
+};
 const DEFAULT_APP_TAGLINE = '希望孩子的數學能夠越來越穩定進步💪🏻讓我們一起努力吧🌷';
 const DEFAULT_ABOUT_TAGLINE = '10年以上高中數學教學經驗｜合格教師證｜雙碩士｜線上高中數學教師🧮';
 function defaultProfile(){
@@ -362,14 +374,15 @@ async function loadData(){
     return;
   }
   try{
-    const [sSnap, lSnap, schSnap, paySnap, sumSnap, profSnap, viewSnap] = await Promise.all([
+    const [sSnap, lSnap, schSnap, paySnap, sumSnap, profSnap, viewSnap, examSnap] = await Promise.all([
       getDoc(doc(db,'tutorlog','students')),
       getDoc(doc(db,'tutorlog','lessons')),
       getDoc(doc(db,'tutorlog','schedules')),
       getDoc(doc(db,'tutorlog','payments')),
       getDoc(doc(db,'tutorlog','summaries')),
       getDoc(doc(db,'tutorlog','profile')),
-      getDoc(doc(db,'tutorlog','viewCounts'))
+      getDoc(doc(db,'tutorlog','viewCounts')),
+      getDoc(doc(db,'tutorlog','examDates'))
     ]);
     state.students = sSnap.exists() ? (sSnap.data().list || []) : [];
     state.lessons = lSnap.exists() ? (lSnap.data().list || []) : [];
@@ -378,6 +391,7 @@ async function loadData(){
     state.summaries = sumSnap.exists() ? (sumSnap.data().list || []) : [];
     state.profile = profSnap.exists() ? profSnap.data() : defaultProfile();
     state.viewCounts = viewSnap.exists() ? (viewSnap.data() || {}) : {};
+    state.examDates = examSnap.exists() ? (examSnap.data().list || []) : [];
   }catch(e){
     showPersistentError('讀取資料時發生問題：'+(e?.message||e));
     state.students = [];
@@ -387,6 +401,7 @@ async function loadData(){
     state.summaries = [];
     state.profile = defaultProfile();
     state.viewCounts = {};
+    state.examDates = [];
   }
   // fill in any missing profile fields / migrate old plain-text education
   {
@@ -521,6 +536,10 @@ function attachLiveListeners(){
     state.viewCounts = snap.exists() ? (snap.data() || {}) : {};
     if(state.loaded) render();
   }, ()=>{});
+  onSnapshot(doc(db,'tutorlog','examDates'), snap=>{
+    state.examDates = snap.exists() ? (snap.data().list || []) : [];
+    if(state.loaded) render();
+  }, e=> showPersistentError('即時同步考試日期時發生問題：'+(e?.message||e)));
 }
 
 async function saveStudents(){
@@ -538,6 +557,10 @@ async function saveSchedules(){
 async function savePayments(){
   try{ await setDoc(doc(db,'tutorlog','payments'), { list: state.payments }); }
   catch(e){ showPersistentError('儲存收款狀態時發生問題：'+(e?.message||JSON.stringify(e))); }
+}
+async function saveExamDates(){
+  try{ await setDoc(doc(db,'tutorlog','examDates'), { list: state.examDates }); }
+  catch(e){ showPersistentError('儲存考試日期時發生問題：'+(e?.message||JSON.stringify(e))); }
 }
 async function saveSummaries(){
   try{ await setDoc(doc(db,'tutorlog','summaries'), { list: state.summaries }); }
@@ -577,6 +600,16 @@ function monthSchedulesFor(sid){
   const y = state.cursor.getFullYear(), m = state.cursor.getMonth();
   const prefix = `${y}-${pad(m+1)}-`;
   return schedulesForStudent(sid).filter(s=> s.date.startsWith(prefix));
+}
+/* ---------- exam dates ---------- */
+function monthExamsFor(sid){
+  const y = state.cursor.getFullYear(), m = state.cursor.getMonth();
+  const prefix = `${y}-${pad(m+1)}-`;
+  return state.examDates.filter(x=>x.studentId===sid && x.date.startsWith(prefix))
+    .sort((a,b)=> a.date.localeCompare(b.date));
+}
+function examTypesForDate(sid, dateKey){
+  return state.examDates.filter(x=>x.studentId===sid && x.date===dateKey).map(x=>x.type);
 }
 function occurrencesForDate(sid, dateKey){
   return state.schedules.filter(s=>s.studentId===sid && s.date===dateKey)
@@ -734,6 +767,7 @@ function renderStudentView(){
         <span><i style="background:var(--red)"></i>已上課</span>
         <span><i style="background:var(--teal)"></i>排定上課</span>
         <span><i style="background:transparent;border:1px solid var(--red)"></i>今天</span>
+        <span><i style="background:${EXAM_COLOR}"></i>考試日期（期中／期末／模擬考）</span>
       </div>
     </div>
 
@@ -745,6 +779,16 @@ function renderStudentView(){
         return `<div class="sched-item"><span class="sched-when">${Number(mm)}/${Number(dd)}（${dayNames[dow]}）　${formatTime(sc.hour,sc.minute)}</span></div>`;
       }).join('') : `<div class="sched-empty">這個月尚未排定上課時段</div>`}
     </div>
+
+    ${monthExamsFor(s.id).length ? `<div class="card">
+      <h3 class="section-title">重要考試日期</h3>
+      ${monthExamsFor(s.id).map(ex=>{
+        const dow = new Date(ex.date+'T00:00:00').getDay();
+        const [yy,mm,dd] = ex.date.split('-');
+        const info = EXAM_TYPES[ex.type] || { label: ex.type };
+        return `<div class="sched-item"><span class="sched-when"><span class="exam-badge" style="background:${EXAM_COLOR}"></span>${info.label}　${Number(mm)}/${Number(dd)}（${dayNames[dow]}）</span></div>`;
+      }).join('')}
+    </div>` : ''}
   `;
 
   $('#stuPrev').addEventListener('click', ()=>{ state.cursor = new Date(y, m-1, 1); renderStudentView(); });
@@ -764,7 +808,9 @@ function renderStudentView(){
     if(hasContent) classes.push('has-lesson');
     else if(hasSchedule) classes.push('has-schedule');
     const dot = hasContent ? '<span class="dot"></span>' : (hasSchedule ? '<span class="dot dot-schedule"></span>' : '');
-    calHtml += `<div class="${classes.join(' ')}" data-date="${key}"><span>${d}</span>${dot}</div>`;
+    const examTypes = examTypesForDate(s.id, key);
+    const examDots = examTypes.map(()=>`<span class="dot dot-exam"></span>`).join('');
+    calHtml += `<div class="${classes.join(' ')}" data-date="${key}"><span>${d}</span><span class="dot-row">${dot}${examDots}</span></div>`;
   }
   $('#stuCalGrid').innerHTML = calHtml;
 }
@@ -1693,6 +1739,60 @@ function deleteSchedule(id){
   });
 }
 
+function examModal(sid, existing){
+  const e = existing || { type:'mid1', date: toKey(new Date()) };
+  showModal(`
+    <h3>${existing?'編輯考試日期':'新增考試日期'}</h3>
+    <div class="field"><label>類型</label>
+      <select id="m-type">
+        ${Object.keys(EXAM_TYPES).map(k=>`<option value="${k}" ${e.type===k?'selected':''}>${EXAM_TYPES[k].label}</option>`).join('')}
+      </select>
+    </div>
+    <div class="field"><label>日期</label><input type="date" id="m-date" value="${e.date}"></div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" id="m-cancel">取消</button>
+      <button class="btn btn-primary" id="m-save">${existing?'儲存':'新增'}</button>
+    </div>
+  `);
+  $('#m-cancel').addEventListener('click', closeModal);
+  $('#m-save').addEventListener('click', async ()=>{
+    const date = $('#m-date').value;
+    if(!date) return;
+    const data = { id: existing ? existing.id : uid(), studentId: sid, type: $('#m-type').value, date };
+    if(existing){
+      const idx = state.examDates.findIndex(x=>x.id===existing.id);
+      state.examDates[idx] = data;
+    } else {
+      state.examDates.push(data);
+    }
+    closeModal();
+    await saveExamDates();
+    render();
+  });
+}
+function addExamItem(sid){ examModal(sid, null); }
+function editExamItem(id){
+  const existing = state.examDates.find(x=>x.id===id);
+  if(existing) examModal(existing.studentId, existing);
+}
+function deleteExamItem(id){
+  showModal(`
+    <h3>刪除考試日期</h3>
+    <p>確定要刪除這筆考試日期嗎？</p>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" id="m-cancel">取消</button>
+      <button class="btn btn-primary" id="m-confirm" style="background:var(--red)">刪除</button>
+    </div>
+  `);
+  $('#m-cancel').addEventListener('click', closeModal);
+  $('#m-confirm').addEventListener('click', async ()=>{
+    state.examDates = state.examDates.filter(x=>x.id!==id);
+    closeModal();
+    await saveExamDates();
+    render();
+  });
+}
+
 function openDayModal(sid, dateKey){
   const occ = occurrencesForDate(sid, dateKey);
   const contentLesson = state.lessons.find(l=>l.studentId===sid && l.date===dateKey);
@@ -1742,6 +1842,7 @@ function renderMain(){
 
   const monthList = monthLessonsFor(s.id);
   const monthSched = monthSchedulesFor(s.id);
+  const monthExams = monthExamsFor(s.id);
   const totalHours = monthSched.reduce((sum,sc)=> sum + (sc.hours||0), 0);
   const cy = state.cursor.getFullYear(), cm = state.cursor.getMonth();
   const rate = rateForMonth(s, cy, cm);
@@ -1796,6 +1897,27 @@ function renderMain(){
     </div>
 
     <div class="card">
+      <h3 class="section-title">重要考試日期</h3>
+      ${monthExams.length ? monthExams.map(ex=>{
+        const dow = new Date(ex.date+'T00:00:00').getDay();
+        const [y,m,d] = ex.date.split('-');
+        const info = EXAM_TYPES[ex.type] || { label: ex.type };
+        return `<div class="sched-item">
+          <span class="sched-when"><span class="exam-badge" style="background:${EXAM_COLOR}"></span>${info.label}　${Number(m)}/${Number(d)}（${dayNames[dow]}）</span>
+          ${state.viewMode==='teacher' ? `
+            <span style="display:flex;gap:12px">
+              <button data-edit-exam="${ex.id}">編輯</button>
+              <button data-del-exam="${ex.id}" style="color:var(--red)">刪除</button>
+            </span>` : ''}
+        </div>`;
+      }).join('') : `<div class="sched-empty">這個月尚未新增考試日期</div>`}
+      ${state.viewMode==='teacher' ? `
+        <div class="sched-add-row">
+          <button id="addExamBtn">＋ 新增考試日期</button>
+        </div>` : ''}
+    </div>
+
+    <div class="card">
       <div class="cal-head">
         <div class="cal-nav"><button id="prevMonth">‹</button></div>
         <h2 id="monthLabel">${state.cursor.getFullYear()} 年 ${state.cursor.getMonth()+1} 月</h2>
@@ -1807,6 +1929,7 @@ function renderMain(){
         <span><i style="background:var(--red)"></i>已記錄上課內容</span>
         <span><i style="background:var(--teal)"></i>已排定尚未記錄</span>
         <span><i style="background:transparent;border:1px solid var(--red)"></i>今天</span>
+        <span><i style="background:${EXAM_COLOR}"></i>考試日期（期中／期末／模擬考）</span>
       </div>
     </div>
 
@@ -1839,6 +1962,7 @@ function renderMain(){
     $('#delStudentBtn').addEventListener('click', deleteStudent);
     $('#addTrigger').addEventListener('click', ()=> openForm(null, toKey(new Date())));
     $('#addSchedBtn').addEventListener('click', ()=> addSchedule(s.id));
+    $('#addExamBtn').addEventListener('click', ()=> addExamItem(s.id));
     $('#saveSummaryBtn').addEventListener('click', async ()=>{
       const text = $('#summaryText').value.trim();
       await saveSummaryText(s.id, cy, cm, text);
@@ -1846,6 +1970,8 @@ function renderMain(){
     });
     area.querySelectorAll('[data-move]').forEach(btn=> btn.addEventListener('click', ()=> moveSchedule(btn.dataset.move)));
     area.querySelectorAll('[data-delsched]').forEach(btn=> btn.addEventListener('click', ()=> deleteSchedule(btn.dataset.delsched)));
+    area.querySelectorAll('[data-edit-exam]').forEach(btn=> btn.addEventListener('click', ()=> editExamItem(btn.dataset.editExam)));
+    area.querySelectorAll('[data-del-exam]').forEach(btn=> btn.addEventListener('click', ()=> deleteExamItem(btn.dataset.delExam)));
   }
   $('#prevMonth').addEventListener('click', ()=>{ state.cursor = new Date(state.cursor.getFullYear(), state.cursor.getMonth()-1, 1); render(); });
   $('#nextMonth').addEventListener('click', ()=>{ state.cursor = new Date(state.cursor.getFullYear(), state.cursor.getMonth()+1, 1); render(); });
@@ -1876,7 +2002,9 @@ function renderCalendar(sid){
     if(state.viewMode==='teacher' || hasContent) classes.push('clickable');
     if(state.selectedDate===key) classes.push('selected');
     const dot = hasContent ? '<span class="dot"></span>' : (hasSchedule ? '<span class="dot dot-schedule"></span>' : '');
-    html += `<div class="${classes.join(' ')}" data-date="${key}"><span>${d}</span>${dot}</div>`;
+    const examTypes = examTypesForDate(sid, key);
+    const examDots = examTypes.map(()=>`<span class="dot dot-exam"></span>`).join('');
+    html += `<div class="${classes.join(' ')}" data-date="${key}"><span>${d}</span><span class="dot-row">${dot}${examDots}</span></div>`;
   }
   $('#calGrid').innerHTML = html;
 
