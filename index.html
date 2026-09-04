@@ -279,6 +279,7 @@ let state = {
   showOverview: false,
   showProfileEdit: false,
   lockedProfile: false,
+  isPreview: false,
   profile: null,
   viewCounts: {},
   viewTracked: false,
@@ -302,6 +303,9 @@ function applyRouteFromHash(){
     state.currentStudentId = decodeURIComponent(studentMatch[1]);
   } else if(window.location.hash === '#/about'){
     state.lockedProfile = true;
+  } else if(window.location.hash === '#/about-preview'){
+    state.lockedProfile = true;
+    state.isPreview = true;
   }
 }
 
@@ -507,7 +511,7 @@ async function loadData(){
   }
   if(!state.viewTracked){
     state.viewTracked = true;
-    if(state.lockedProfile) trackViewOncePerDevice('about');
+    if(state.lockedProfile && !state.isPreview) trackViewOncePerDevice('about');
     else if(state.lockedParent && state.currentStudentId) trackViewOncePerDevice(state.currentStudentId+'_parent');
     else if(state.lockedStudent && state.currentStudentId) trackViewOncePerDevice(state.currentStudentId+'_student');
   }
@@ -1432,7 +1436,7 @@ function previewProfile(){
     $('#m-close').addEventListener('click', closeModal);
     return;
   }
-  window.open(`${base}#/about`, '_blank');
+  window.open(`${base}#/about-preview`, '_blank');
 }
 
 function renderProfilePage(){
