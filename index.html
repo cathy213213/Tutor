@@ -279,7 +279,10 @@ let state = {
   profile: null,
   viewCounts: {},
   viewTracked: false,
-  teacherTab: 'overview'
+  teacherTab: 'overview',
+  reorderStudents: false,
+  reorderEdu: false,
+  reorderTeach: false
 };
 
 const dayNames = ['週日','週一','週二','週三','週四','週五','週六'];
@@ -900,7 +903,10 @@ function renderProfileEditor(){
     </div>
 
     <div class="card">
-      <h3 class="section-title">學歷</h3>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+        <h3 class="section-title" style="margin:0;">學歷</h3>
+        <button class="add-trigger" id="toggleReorderEdu">${state.reorderEdu ? '完成排序' : '調整順序'}</button>
+      </div>
       ${p.educationList.length ? p.educationList.map((e,i)=>`
         <div class="sched-item" style="align-items:flex-start;">
           <span class="sched-when" style="display:flex;gap:10px;">
@@ -908,25 +914,34 @@ function renderProfileEditor(){
             <span>${eduLine(e)}</span>
           </span>
           <span style="display:flex;gap:10px;flex-shrink:0;align-items:center;">
-            <button data-move-edu="${e.id}" data-dir="up" ${i===0?'disabled style="opacity:0.3;"':''}>▲</button>
-            <button data-move-edu="${e.id}" data-dir="down" ${i===p.educationList.length-1?'disabled style="opacity:0.3;"':''}>▼</button>
-            <button data-edit-edu="${e.id}">編輯</button>
-            <button data-del-edu="${e.id}" style="color:var(--red)">刪除</button>
+            ${state.reorderEdu ? `
+              <button data-move-edu="${e.id}" data-dir="up" ${i===0?'disabled style="opacity:0.3;"':''}>▲</button>
+              <button data-move-edu="${e.id}" data-dir="down" ${i===p.educationList.length-1?'disabled style="opacity:0.3;"':''}>▼</button>
+            ` : `
+              <button data-edit-edu="${e.id}">編輯</button>
+              <button data-del-edu="${e.id}" style="color:var(--red)">刪除</button>
+            `}
           </span>
         </div>`).join('') : `<div class="sched-empty">尚未新增學歷</div>`}
       <div class="sched-add-row"><button id="addEduBtn">＋ 新增學歷</button></div>
     </div>
 
     <div class="card">
-      <h3 class="section-title">教學經歷</h3>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+        <h3 class="section-title" style="margin:0;">教學經歷</h3>
+        <button class="add-trigger" id="toggleReorderTeach">${state.reorderTeach ? '完成排序' : '調整順序'}</button>
+      </div>
       ${p.teachingHistory.length ? p.teachingHistory.map((t,i)=>`
         <div class="sched-item">
           <span class="sched-when">${teachLine(t)}</span>
           <span style="display:flex;gap:10px;align-items:center;">
-            <button data-move-teach="${t.id}" data-dir="up" ${i===0?'disabled style="opacity:0.3;"':''}>▲</button>
-            <button data-move-teach="${t.id}" data-dir="down" ${i===p.teachingHistory.length-1?'disabled style="opacity:0.3;"':''}>▼</button>
-            <button data-edit-teach="${t.id}">編輯</button>
-            <button data-del-teach="${t.id}" style="color:var(--red)">刪除</button>
+            ${state.reorderTeach ? `
+              <button data-move-teach="${t.id}" data-dir="up" ${i===0?'disabled style="opacity:0.3;"':''}>▲</button>
+              <button data-move-teach="${t.id}" data-dir="down" ${i===p.teachingHistory.length-1?'disabled style="opacity:0.3;"':''}>▼</button>
+            ` : `
+              <button data-edit-teach="${t.id}">編輯</button>
+              <button data-del-teach="${t.id}" style="color:var(--red)">刪除</button>
+            `}
           </span>
         </div>`).join('') : `<div class="sched-empty">尚未新增教學經歷</div>`}
       <div class="sched-add-row"><button id="addTeachBtn">＋ 新增一項</button></div>
@@ -1017,6 +1032,8 @@ function renderProfileEditor(){
   $('#addTeachBtn').addEventListener('click', addTeachingItem);
   $('#addTestiBtn').addEventListener('click', addTestimonialItem);
   $('#addClassPhotoBtn').addEventListener('click', addClassPhotoItem);
+  $('#toggleReorderEdu').addEventListener('click', ()=>{ state.reorderEdu = !state.reorderEdu; render(); });
+  $('#toggleReorderTeach').addEventListener('click', ()=>{ state.reorderTeach = !state.reorderTeach; render(); });
   area.querySelectorAll('[data-move-edu]').forEach(btn=>{
     btn.addEventListener('click', async ()=>{
       moveArrayItem(p.educationList, btn.dataset.moveEdu, btn.dataset.dir);
@@ -2298,19 +2315,24 @@ function renderStudentListTab(){
   const area = $('#mainArea');
   area.innerHTML = `
     <div class="card">
-      <h3 class="section-title">學生總覽</h3>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+        <h3 class="section-title" style="margin:0;">學生總覽</h3>
+        <button class="add-trigger" id="toggleReorderStudents">${state.reorderStudents ? '完成排序' : '調整順序'}</button>
+      </div>
       ${state.students.length ? state.students.map((s,i)=>`
         <div class="sched-item">
           <span class="sched-when" style="font-weight:700;cursor:pointer;" data-goto-student="${s.id}">${escapeHtml(s.name)}</span>
           <span style="display:flex;gap:10px;align-items:center;flex-shrink:0;">
-            <button data-move-student="${s.id}" data-dir="up" ${i===0?'disabled style="opacity:0.3;"':''}>▲</button>
-            <button data-move-student="${s.id}" data-dir="down" ${i===state.students.length-1?'disabled style="opacity:0.3;"':''}>▼</button>
-            <span style="color:var(--ink-soft);cursor:pointer;" data-goto-student="${s.id}">›</span>
+            ${state.reorderStudents ? `
+              <button data-move-student="${s.id}" data-dir="up" ${i===0?'disabled style="opacity:0.3;"':''}>▲</button>
+              <button data-move-student="${s.id}" data-dir="down" ${i===state.students.length-1?'disabled style="opacity:0.3;"':''}>▼</button>
+            ` : `<span style="color:var(--ink-soft);cursor:pointer;" data-goto-student="${s.id}">›</span>`}
           </span>
         </div>`).join('') : `<div class="sched-empty">尚未新增學生</div>`}
       <div class="sched-add-row"><button id="addStudentBtn2">＋ 新增學生</button></div>
     </div>
   `;
+  $('#toggleReorderStudents').addEventListener('click', ()=>{ state.reorderStudents = !state.reorderStudents; render(); });
   area.querySelectorAll('[data-goto-student]').forEach(el=>{
     el.addEventListener('click', ()=>{
       state.currentStudentId = el.dataset.gotoStudent;
