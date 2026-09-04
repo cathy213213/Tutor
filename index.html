@@ -772,6 +772,7 @@ function renderStudentView(){
   const lessonDates = new Set(studentLessons(s.id).map(l=>l.date));
 
   area.innerHTML = `
+    ${(!state.lockedStudent) ? backToMoreBanner() : ''}
     ${aboutLinkBanner()}
     <div class="card">
       <div style="font-size:15px;line-height:2;">
@@ -849,6 +850,7 @@ function renderStudentView(){
     calHtml += `<div class="${classes.join(' ')}" data-date="${key}"><span>${d}</span><span class="dot-row">${dot}${examDots}</span></div>`;
   }
   $('#stuCalGrid').innerHTML = calHtml;
+  bindBackToMoreBanner();
 }
 
 /* ---------- teacher public profile page ---------- */
@@ -861,6 +863,7 @@ function renderProfileEditor(){
   p.educationList = p.educationList || [];
 
   area.innerHTML = `
+    ${backToMoreBanner()}
     <div class="card">
       <h3 class="section-title">公開介紹頁</h3>
       <p style="font-size:13px;color:var(--ink-soft);margin:0 0 12px;">👀 累積瀏覽次數：${state.viewCounts.about || 0} 次</p>
@@ -1063,6 +1066,7 @@ function renderProfileEditor(){
   $('#copyAboutBtn').addEventListener('click', copyAboutLink);
   $('#previewProfileBtn').addEventListener('click', previewProfile);
   bindLightboxImages(area);
+  bindBackToMoreBanner();
 }
 
 function handleProfilePhotoUpload(e){
@@ -1874,12 +1878,14 @@ function openDayModal(sid, dateKey){
 function renderMain(){
   const area = $('#mainArea');
   const s = currentStudent();
+  const showBack = !state.lockedParent && state.viewMode==='parent';
   if(!s){
-    area.innerHTML = state.lockedParent
+    area.innerHTML = (showBack ? backToMoreBanner() : '') + (state.lockedParent
       ? `<div class="card"><div class="empty-state">找不到這位學生的資料，請確認連結是否正確，或聯絡老師。</div></div>`
       : (state.viewMode==='teacher'
         ? `<div class="card"><div class="empty-state">請先新增一位學生，開始記錄上課內容。</div></div>`
-        : `<div class="card"><div class="empty-state">目前沒有學生資料可以檢視。</div></div>`);
+        : `<div class="card"><div class="empty-state">目前沒有學生資料可以檢視。</div></div>`));
+    bindBackToMoreBanner();
     return;
   }
 
@@ -1894,6 +1900,7 @@ function renderMain(){
   const summaryText = getSummaryText(s.id, cy, cm);
 
   area.innerHTML = `
+    ${showBack ? backToMoreBanner() : ''}
     ${state.viewMode==='parent' ? aboutLinkBanner() : ''}
     <div class="card">
       <div class="student-head">
@@ -2019,6 +2026,7 @@ function renderMain(){
 
   renderCalendar(s.id);
   renderList(s.id);
+  bindBackToMoreBanner();
 }
 
 function renderCalendar(sid){
@@ -2276,24 +2284,44 @@ function goToTab(tab){
   state.teacherTab = tab;
   render();
 }
+function backToMoreBanner(){
+  return `<div class="card" style="text-align:center;padding:12px;">
+    <button class="btn btn-ghost" id="backToMoreBtn">← 返回更多</button>
+  </div>`;
+}
+function bindBackToMoreBanner(){
+  const btn = document.getElementById('backToMoreBtn');
+  if(btn) btn.addEventListener('click', ()=> goToTab('more'));
+}
 
 function renderStudentListTab(){
   const area = $('#mainArea');
   area.innerHTML = `
     <div class="card">
       <h3 class="section-title">學生總覽</h3>
-      ${state.students.length ? state.students.map(s=>`
-        <div class="sched-item" style="cursor:pointer;" data-goto-student="${s.id}">
-          <span class="sched-when" style="font-weight:700;">${escapeHtml(s.name)}</span>
-          <span style="color:var(--ink-soft);">›</span>
+      ${state.students.length ? state.students.map((s,i)=>`
+        <div class="sched-item">
+          <span class="sched-when" style="font-weight:700;cursor:pointer;" data-goto-student="${s.id}">${escapeHtml(s.name)}</span>
+          <span style="display:flex;gap:10px;align-items:center;flex-shrink:0;">
+            <button data-move-student="${s.id}" data-dir="up" ${i===0?'disabled style="opacity:0.3;"':''}>▲</button>
+            <button data-move-student="${s.id}" data-dir="down" ${i===state.students.length-1?'disabled style="opacity:0.3;"':''}>▼</button>
+            <span style="color:var(--ink-soft);cursor:pointer;" data-goto-student="${s.id}">›</span>
+          </span>
         </div>`).join('') : `<div class="sched-empty">尚未新增學生</div>`}
       <div class="sched-add-row"><button id="addStudentBtn2">＋ 新增學生</button></div>
     </div>
   `;
-  area.querySelectorAll('[data-goto-student]').forEach(row=>{
-    row.addEventListener('click', ()=>{
-      state.currentStudentId = row.dataset.gotoStudent;
+  area.querySelectorAll('[data-goto-student]').forEach(el=>{
+    el.addEventListener('click', ()=>{
+      state.currentStudentId = el.dataset.gotoStudent;
       state.teacherTab = 'course';
+      render();
+    });
+  });
+  area.querySelectorAll('[data-move-student]').forEach(btn=>{
+    btn.addEventListener('click', async ()=>{
+      moveArrayItem(state.students, btn.dataset.moveStudent, btn.dataset.dir);
+      await saveStudents();
       render();
     });
   });
@@ -2334,9 +2362,9 @@ function renderMoreTab(){
   const area = $('#mainArea');
   area.innerHTML = `
     <div class="card">
-      <div class="sched-item" style="cursor:pointer;" id="moreProfileEdit"><span class="sched-when">👩‍🏫 老師介紹編輯</span><span style="color:var(--ink-soft);">›</span></div>
-      <div class="sched-item" style="cursor:pointer;" id="moreParentPreview"><span class="sched-when">👪 家長預覽</span><span style="color:var(--ink-soft);">›</span></div>
-      <div class="sched-item" style="cursor:pointer;" id="moreStudentPreview"><span class="sched-when">👧 學生預覽</span><span style="color:var(--ink-soft);">›</span></div>
+      <div class="sched-item" style="cursor:pointer;" id="moreProfileEdit"><span class="sched-when">👩🏻‍🏫老師介紹</span><span style="color:var(--ink-soft);">›</span></div>
+      <div class="sched-item" style="cursor:pointer;" id="moreParentPreview"><span class="sched-when">👩🏻家長預覽</span><span style="color:var(--ink-soft);">›</span></div>
+      <div class="sched-item" style="cursor:pointer;" id="moreStudentPreview"><span class="sched-when">👧🏻學生預覽</span><span style="color:var(--ink-soft);">›</span></div>
       <div class="sched-item" style="cursor:pointer;" id="moreExport"><span class="sched-when">↓ 匯出備份</span></div>
       <div class="sched-item" style="cursor:pointer;" id="moreImport"><span class="sched-when">↑ 匯入備份</span></div>
       <input type="file" id="moreImportFile" accept="application/json" style="display:none">
