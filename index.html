@@ -33,10 +33,12 @@
   }
   .wrap{max-width:760px;margin:0 auto;padding:28px 18px 96px;}
   #bottomNav{display:none;position:fixed;bottom:0;left:0;right:0;background:#fff;border-top:1px solid var(--line);justify-content:space-around;align-items:center;padding:6px 0 max(6px, env(safe-area-inset-bottom));z-index:60;}
-  .nav-btn{background:none;border:none;flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;font-size:10px;color:#E4E7EA;font-family:'Noto Sans TC',sans-serif;padding:4px 0;cursor:pointer;transition:color .15s;}
-  .nav-btn .nav-icon{font-size:19px;line-height:1;opacity:0.25;transition:opacity .15s, background .15s;border-radius:999px;padding:4px 16px;}
+  .nav-btn{background:none;border:none;flex:1;display:flex;flex-direction:column;align-items:center;font-size:10px;color:#E4E7EA;font-family:'Noto Sans TC',sans-serif;padding:4px 0;cursor:pointer;transition:color .15s;}
+  .nav-pill{display:inline-flex;flex-direction:column;align-items:center;gap:2px;border-radius:16px;padding:4px 16px;transition:background .15s;}
+  .nav-btn .nav-icon{font-size:19px;line-height:1;opacity:0.15;transition:opacity .15s;}
   .nav-btn.active{color:var(--ink);font-weight:700;}
-  .nav-btn.active .nav-icon{opacity:1;background:var(--teal);box-shadow:0 2px 6px rgba(47,111,98,0.35);}
+  .nav-btn.active .nav-pill{background:#B8E6D5;box-shadow:0 1px 3px rgba(47,111,98,0.25);}
+  .nav-btn.active .nav-icon{opacity:1;}
 
   header{margin-bottom:16px;}
   .eyebrow-row{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;}
@@ -223,10 +225,10 @@
   <footer>老師請用主連結管理所有學生；每位學生的「家長專屬連結」點開後只會看到該生的紀錄。</footer>
 </div>
 <nav id="bottomNav">
-  <button class="nav-btn" data-tab="overview"><span class="nav-icon">📊</span>總覽</button>
-  <button class="nav-btn" data-tab="course"><span class="nav-icon">📖</span>課程</button>
-  <button class="nav-btn" data-tab="calendar"><span class="nav-icon">📅</span>月曆</button>
-  <button class="nav-btn" data-tab="more"><span class="nav-icon">📌</span>更多</button>
+  <button class="nav-btn" data-tab="overview"><span class="nav-pill"><span class="nav-icon">📊</span>總覽</span></button>
+  <button class="nav-btn" data-tab="course"><span class="nav-pill"><span class="nav-icon">📖</span>課程</span></button>
+  <button class="nav-btn" data-tab="calendar"><span class="nav-pill"><span class="nav-icon">📅</span>月曆</span></button>
+  <button class="nav-btn" data-tab="more"><span class="nav-pill"><span class="nav-icon">📌</span>更多</span></button>
 </nav>
 <div id="modalRoot"></div>
 
