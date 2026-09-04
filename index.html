@@ -862,6 +862,15 @@ function renderProfileEditor(){
 
   area.innerHTML = `
     <div class="card">
+      <h3 class="section-title">公開介紹頁</h3>
+      <p style="font-size:13px;color:var(--ink-soft);margin:0 0 12px;">👀 累積瀏覽次數：${state.viewCounts.about || 0} 次</p>
+      <div style="display:flex;gap:12px;flex-wrap:wrap;">
+        <button class="btn btn-ghost" id="previewProfileBtn">👀 預覽介紹頁</button>
+        <button class="btn btn-primary" id="copyAboutBtn">複製介紹頁連結</button>
+      </div>
+    </div>
+
+    <div class="card">
       <h3 class="section-title">老師介紹頁編輯</h3>
       <div style="text-align:center;margin-bottom:16px;">
         ${p.photoUrl
@@ -960,15 +969,6 @@ function renderProfileEditor(){
         <p style="font-size:11px;color:var(--ink-soft);margin:6px 0 0;">在 LINE App 裡：設定 → 好友 → 邀請好友 → 透過網址／QR code，複製那個網址貼在這裡</p>
       </div>
       <div style="margin-top:6px;"><button class="btn btn-primary" id="saveContactBtn">儲存聯絡方式</button></div>
-    </div>
-
-    <div class="card">
-      <h3 class="section-title">公開介紹頁</h3>
-      <p style="font-size:13px;color:var(--ink-soft);margin:0 0 12px;">👀 累積瀏覽次數：${state.viewCounts.about || 0} 次</p>
-      <div style="display:flex;gap:12px;flex-wrap:wrap;">
-        <button class="btn btn-ghost" id="previewProfileBtn">👀 預覽介紹頁</button>
-        <button class="btn btn-primary" id="copyAboutBtn">複製介紹頁連結</button>
-      </div>
     </div>
   `;
 
@@ -2300,6 +2300,36 @@ function renderStudentListTab(){
   $('#addStudentBtn2').addEventListener('click', addStudentPrompt);
 }
 
+function pickStudentForPreview(mode){
+  if(!state.students.length){
+    showModal(`
+      <h3>尚無學生</h3>
+      <p>請先到「總覽」新增至少一位學生，才能預覽。</p>
+      <div class="modal-actions"><button class="btn btn-primary" id="m-close">關閉</button></div>
+    `);
+    $('#m-close').addEventListener('click', closeModal);
+    return;
+  }
+  showModal(`
+    <h3>選擇要預覽的學生</h3>
+    ${state.students.map(s=>`
+      <div class="sched-item" style="cursor:pointer;" data-pick="${s.id}">
+        <span class="sched-when">${escapeHtml(s.name)}</span>
+        <span style="color:var(--ink-soft);">›</span>
+      </div>`).join('')}
+    <div class="modal-actions"><button class="btn btn-ghost" id="m-cancel">取消</button></div>
+  `);
+  $('#m-cancel').addEventListener('click', closeModal);
+  document.querySelectorAll('[data-pick]').forEach(row=>{
+    row.addEventListener('click', ()=>{
+      state.currentStudentId = row.dataset.pick;
+      state.viewMode = mode;
+      closeModal();
+      render();
+    });
+  });
+}
+
 function renderMoreTab(){
   const area = $('#mainArea');
   area.innerHTML = `
@@ -2316,16 +2346,8 @@ function renderMoreTab(){
     </div>
   `;
   $('#moreProfileEdit').addEventListener('click', ()=>{ state.teacherTab='profile'; render(); });
-  $('#moreParentPreview').addEventListener('click', ()=>{
-    if(!state.currentStudentId && state.students.length) state.currentStudentId = state.students[0].id;
-    state.viewMode='parent';
-    render();
-  });
-  $('#moreStudentPreview').addEventListener('click', ()=>{
-    if(!state.currentStudentId && state.students.length) state.currentStudentId = state.students[0].id;
-    state.viewMode='student';
-    render();
-  });
+  $('#moreParentPreview').addEventListener('click', ()=> pickStudentForPreview('parent'));
+  $('#moreStudentPreview').addEventListener('click', ()=> pickStudentForPreview('student'));
   $('#moreExport').addEventListener('click', exportBackup);
   $('#moreImport').addEventListener('click', ()=> $('#moreImportFile').click());
   $('#moreImportFile').addEventListener('change', handleImportFile);
