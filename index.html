@@ -31,7 +31,11 @@
     font-family:'Noto Sans TC', sans-serif;
     min-height:100vh;
   }
-  .wrap{max-width:760px;margin:0 auto;padding:28px 18px 80px;}
+  .wrap{max-width:760px;margin:0 auto;padding:28px 18px 96px;}
+  #bottomNav{display:none;position:fixed;bottom:0;left:0;right:0;background:#fff;border-top:1px solid var(--line);justify-content:space-around;align-items:center;padding:6px 0 max(6px, env(safe-area-inset-bottom));z-index:60;}
+  .nav-btn{background:none;border:none;flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;font-size:10px;color:var(--ink-soft);font-family:'Noto Sans TC',sans-serif;padding:4px 0;cursor:pointer;}
+  .nav-btn .nav-icon{font-size:19px;line-height:1;}
+  .nav-btn.active{color:var(--ink);font-weight:700;}
 
   header{margin-bottom:16px;}
   .eyebrow-row{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;}
@@ -217,6 +221,12 @@
 
   <footer>老師請用主連結管理所有學生；每位學生的「家長專屬連結」點開後只會看到該生的紀錄。</footer>
 </div>
+<nav id="bottomNav">
+  <button class="nav-btn" data-tab="overview"><span class="nav-icon">📊</span>總覽</button>
+  <button class="nav-btn" data-tab="course"><span class="nav-icon">📖</span>課程</button>
+  <button class="nav-btn" data-tab="calendar"><span class="nav-icon">📅</span>月曆</button>
+  <button class="nav-btn" data-tab="more"><span class="nav-icon">📌</span>更多</button>
+</nav>
 <div id="modalRoot"></div>
 
 <script type="module">
@@ -268,7 +278,8 @@ let state = {
   lockedProfile: false,
   profile: null,
   viewCounts: {},
-  viewTracked: false
+  viewTracked: false,
+  teacherTab: 'overview'
 };
 
 const dayNames = ['週日','週一','週二','週三','週四','週五','週六'];
@@ -1579,6 +1590,7 @@ function addStudentPrompt(){
     const student = { id: uid(), name, rateHistory, excludeFromOverview: $('#m-exclude').checked };
     state.students.push(student);
     state.currentStudentId = student.id;
+    state.teacherTab = 'course';
     closeModal();
     await saveStudents();
     render();
@@ -2228,19 +2240,9 @@ function flashLinkCopied(btnId){
 }
 
 function renderModeUI(){
-  const toggle = $('#modeToggle');
-  const locked = state.lockedParent || state.lockedStudent || state.lockedProfile;
-  toggle.style.display = locked ? 'none' : 'flex';
-  $('#btnTeacher').classList.toggle('active', state.viewMode==='teacher');
-  $('#btnParent').classList.toggle('active', state.viewMode==='parent');
-  $('#btnStudent').classList.toggle('active', state.viewMode==='student');
-  $('#backupRow').style.display = (!locked && state.viewMode==='teacher') ? 'flex' : 'none';
-  const showOv = !locked && state.viewMode==='teacher';
-  $('#overviewRow').style.display = showOv ? 'flex' : 'none';
-  if(showOv){
-    $('#overviewBtn').textContent = state.showOverview ? '← 返回學生檢視' : '📊 全部學生總覽';
-    $('#profileEditBtn').textContent = state.showProfileEdit ? '← 返回學生檢視' : '👩\u200d🏫 編輯老師介紹頁';
-  }
+  $('#modeToggle').style.display = 'none';
+  $('#backupRow').style.display = 'none';
+  $('#overviewRow').style.display = 'none';
   const ABOUT_TITLE = '柏萱老師👩🏻\u200d🏫 ｜高中數學教師';
   const DEFAULT_TITLE = '數學家教紀錄📝';
   $('#mainTitle').textContent = state.lockedProfile ? ABOUT_TITLE : DEFAULT_TITLE;
@@ -2262,6 +2264,88 @@ function renderModeUI(){
             ? (s ? `目前檢視：${s.name}` : '請選擇學生')
             : (s ? `學生檢視預覽：${s.name}` : '請選擇學生'));
 }
+
+function updateNavActiveState(){
+  const activeTab = (state.teacherTab==='profile') ? 'more' : state.teacherTab;
+  document.querySelectorAll('.nav-btn').forEach(btn=>{
+    btn.classList.toggle('active', btn.dataset.tab === activeTab);
+  });
+}
+function goToTab(tab){
+  state.viewMode = 'teacher';
+  state.teacherTab = tab;
+  render();
+}
+
+function renderStudentListTab(){
+  const area = $('#mainArea');
+  area.innerHTML = `
+    <div class="card">
+      <h3 class="section-title">學生總覽</h3>
+      ${state.students.length ? state.students.map(s=>`
+        <div class="sched-item" style="cursor:pointer;" data-goto-student="${s.id}">
+          <span class="sched-when" style="font-weight:700;">${escapeHtml(s.name)}</span>
+          <span style="color:var(--ink-soft);">›</span>
+        </div>`).join('') : `<div class="sched-empty">尚未新增學生</div>`}
+      <div class="sched-add-row"><button id="addStudentBtn2">＋ 新增學生</button></div>
+    </div>
+  `;
+  area.querySelectorAll('[data-goto-student]').forEach(row=>{
+    row.addEventListener('click', ()=>{
+      state.currentStudentId = row.dataset.gotoStudent;
+      state.teacherTab = 'course';
+      render();
+    });
+  });
+  $('#addStudentBtn2').addEventListener('click', addStudentPrompt);
+}
+
+function renderMoreTab(){
+  const area = $('#mainArea');
+  area.innerHTML = `
+    <div class="card">
+      <div class="sched-item" style="cursor:pointer;" id="moreProfileEdit"><span class="sched-when">👩‍🏫 老師介紹編輯</span><span style="color:var(--ink-soft);">›</span></div>
+      <div class="sched-item" style="cursor:pointer;" id="moreParentPreview"><span class="sched-when">👪 家長預覽</span><span style="color:var(--ink-soft);">›</span></div>
+      <div class="sched-item" style="cursor:pointer;" id="moreStudentPreview"><span class="sched-when">👧 學生預覽</span><span style="color:var(--ink-soft);">›</span></div>
+      <div class="sched-item" style="cursor:pointer;" id="moreExport"><span class="sched-when">↓ 匯出備份</span></div>
+      <div class="sched-item" style="cursor:pointer;" id="moreImport"><span class="sched-when">↑ 匯入備份</span></div>
+      <input type="file" id="moreImportFile" accept="application/json" style="display:none">
+    </div>
+    <div class="card">
+      <div class="sched-item" style="cursor:pointer;" id="moreLogout"><span class="sched-when" style="color:var(--red);">🔒 登出</span></div>
+    </div>
+  `;
+  $('#moreProfileEdit').addEventListener('click', ()=>{ state.teacherTab='profile'; render(); });
+  $('#moreParentPreview').addEventListener('click', ()=>{
+    if(!state.currentStudentId && state.students.length) state.currentStudentId = state.students[0].id;
+    state.viewMode='parent';
+    render();
+  });
+  $('#moreStudentPreview').addEventListener('click', ()=>{
+    if(!state.currentStudentId && state.students.length) state.currentStudentId = state.students[0].id;
+    state.viewMode='student';
+    render();
+  });
+  $('#moreExport').addEventListener('click', exportBackup);
+  $('#moreImport').addEventListener('click', ()=> $('#moreImportFile').click());
+  $('#moreImportFile').addEventListener('change', handleImportFile);
+  $('#moreLogout').addEventListener('click', ()=>{
+    showModal(`
+      <h3>登出</h3>
+      <p>確定要登出嗎？這台裝置之後打開網站會再次要求輸入密碼。</p>
+      <div class="modal-actions">
+        <button class="btn btn-ghost" id="m-cancel">取消</button>
+        <button class="btn btn-primary" id="m-confirm" style="background:var(--red)">登出</button>
+      </div>
+    `);
+    $('#m-cancel').addEventListener('click', closeModal);
+    $('#m-confirm').addEventListener('click', logoutTeacher);
+  });
+}
+
+document.querySelectorAll('.nav-btn').forEach(btn=>{
+  btn.addEventListener('click', ()=> goToTab(btn.dataset.tab));
+});
 
 function exportBackup(){
   const payload = {
@@ -2321,29 +2405,35 @@ function confirmImport(data){
 function render(){
   if(!state.loaded) return;
   renderModeUI();
-  if(state.lockedProfile){
+
+  const locked = state.lockedParent || state.lockedStudent || state.lockedProfile;
+
+  if(locked){
+    $('#bottomNav').style.display = 'none';
     $('#studentTabs').style.display = 'none';
-    renderProfilePage();
+    if(state.lockedProfile){ renderProfilePage(); return; }
+    if(state.lockedStudent){ renderStudentView(); return; }
+    renderMain(); // lockedParent
     return;
   }
-  if(state.lockedStudent){
-    $('#studentTabs').style.display = 'none';
-    renderStudentView();
-    return;
-  }
-  const inOverview = !state.lockedParent && state.viewMode==='teacher' && state.showOverview;
-  const inProfileEdit = !state.lockedParent && state.viewMode==='teacher' && state.showProfileEdit;
-  $('#studentTabs').style.display = (inOverview || inProfileEdit) ? 'none' : '';
-  if(inOverview){
-    renderOverview();
-  } else if(inProfileEdit){
-    renderProfileEditor();
-  } else if(!state.lockedParent && state.viewMode==='student'){
-    renderTabs();
-    renderStudentView();
-  } else {
-    renderTabs();
-    renderMain();
+
+  $('#studentTabs').style.display = 'none';
+  $('#bottomNav').style.display = 'flex';
+  updateNavActiveState();
+
+  if(state.viewMode==='parent'){ renderMain(); return; }
+  if(state.viewMode==='student'){ renderStudentView(); return; }
+
+  switch(state.teacherTab){
+    case 'calendar': renderOverview(); break;
+    case 'more': renderMoreTab(); break;
+    case 'profile': renderProfileEditor(); break;
+    case 'course':
+      if(!state.currentStudentId && state.students.length) state.currentStudentId = state.students[0].id;
+      renderMain();
+      break;
+    default:
+      renderStudentListTab();
   }
 }
 
