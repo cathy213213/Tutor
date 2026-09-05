@@ -610,8 +610,14 @@ async function uploadImage(file, folder){
 function currentStudent(){ return state.students.find(s=>s.id===state.currentStudentId) || null; }
 function studentLessons(sid){ return state.lessons.filter(l=>l.studentId===sid).sort((a,b)=>a.date.localeCompare(b.date)); }
 function lessonNumberMap(sid){
-  const list = studentLessons(sid); const map={};
-  list.forEach((l,i)=> map[l.id]=i+1);
+  const list = studentLessons(sid);
+  const map = {};
+  const counters = {}; // per "YYYY-MM" counter
+  list.forEach(l=>{
+    const monthKey = l.date.slice(0,7); // "YYYY-MM"
+    counters[monthKey] = (counters[monthKey] || 0) + 1;
+    map[l.id] = counters[monthKey];
+  });
   return map;
 }
 function monthLessonsFor(sid){
