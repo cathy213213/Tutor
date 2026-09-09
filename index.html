@@ -106,6 +106,18 @@
   .dot-row .dot{margin-top:0;}
   .day .dot.dot-exam{background:#7C5CFC;}
   .exam-badge{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:6px;vertical-align:middle;}
+  .stat-hero{text-align:center;padding:6px 0 4px;}
+  .stat-hero .stat-label{font-size:12px;color:var(--ink-soft);margin-bottom:4px;}
+  .stat-hero .stat-num{font-family:'Noto Serif TC',serif;font-weight:700;font-size:34px;color:var(--ink);}
+  .stat-progress{background:var(--paper);border-radius:999px;height:8px;margin:14px 0 4px;overflow:hidden;}
+  .stat-progress-fill{background:var(--teal);height:100%;border-radius:999px;transition:width .3s;}
+  .stat-progress-labels{display:flex;justify-content:space-between;font-size:11px;color:var(--ink-soft);margin-top:2px;}
+  .stat-cols{display:flex;gap:14px;margin-top:16px;}
+  .stat-col{flex:1;background:var(--paper);border-radius:12px;padding:14px;}
+  .stat-col-title{font-size:13px;font-weight:700;margin-bottom:10px;display:flex;align-items:center;gap:6px;}
+  .stat-row{display:flex;justify-content:space-between;font-size:13px;padding:4px 0;}
+  .stat-row .stat-row-val{font-weight:700;}
+  .stat-divider{border-top:1px dashed var(--line);margin:8px 0;}
 
   /* overview calendar: bigger cells showing time+name inline */
   .ov-grid7{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;}
@@ -1499,7 +1511,54 @@ function renderOverview(){
   const totalHours = summary.reduce((sum,x)=> sum + x.hours, 0);
   const totalFee = summary.reduce((sum,x)=> sum + (x.fee||0), 0);
 
+  // aggregate class/hour progress + paid/unpaid totals across all (non-excluded) students
+  const todayStr = todayKey();
+  const monthPrefix = `${y}-${pad(m+1)}-`;
+  let doneCount=0, upcomingCount=0, doneHours=0, upcomingHours=0;
+  state.schedules.forEach(sc=>{
+    if(!sc.date.startsWith(monthPrefix)) return;
+    const st = state.students.find(s=>s.id===sc.studentId);
+    if(!st || st.excludeFromOverview) return;
+    if(sc.date <= todayStr){ doneCount++; doneHours += sc.hours||0; }
+    else { upcomingCount++; upcomingHours += sc.hours||0; }
+  });
+  let paidTotal=0, unpaidTotal=0;
+  summary.forEach(x=>{
+    if(x.fee===null) return;
+    if(isPaidForMonth(x.id, y, m)) paidTotal += x.fee; else unpaidTotal += x.fee;
+  });
+  const totalClasses = doneCount+upcomingCount;
+  const progressPct = totalClasses>0 ? Math.round(doneCount/totalClasses*100) : 0;
+
   area.innerHTML = `
+    <div class="card">
+      <div class="stat-hero">
+        <div class="stat-label">📅 本月預估總收入</div>
+        <div class="stat-num">$${totalFee.toLocaleString()}</div>
+      </div>
+      <div class="stat-progress"><div class="stat-progress-fill" style="width:${progressPct}%;"></div></div>
+      <div class="stat-progress-labels"><span>0%</span><span>${progressPct}% 已完成</span><span>100%</span></div>
+      <div class="stat-cols">
+        <div class="stat-col">
+          <div class="stat-col-title">📚 課堂統計</div>
+          <div style="font-size:11px;color:var(--ink-soft);margin-bottom:4px;">堂數</div>
+          <div class="stat-row"><span>已上</span><span class="stat-row-val">${doneCount}堂</span></div>
+          <div class="stat-row"><span>待上</span><span class="stat-row-val" style="color:#E8A33D;">${upcomingCount}堂</span></div>
+          <div class="stat-divider"></div>
+          <div style="font-size:11px;color:var(--ink-soft);margin-bottom:4px;">時數</div>
+          <div class="stat-row"><span>已上</span><span class="stat-row-val">${doneHours.toFixed(1)}h</span></div>
+          <div class="stat-row"><span>待上</span><span class="stat-row-val" style="color:#E8A33D;">${upcomingHours.toFixed(1)}h</span></div>
+        </div>
+        <div class="stat-col">
+          <div class="stat-col-title">💰 收入統計</div>
+          <div class="stat-row"><span>已收</span><span class="stat-row-val" style="color:var(--teal);">$${paidTotal.toLocaleString()}</span></div>
+          <div class="stat-row"><span>未收</span><span class="stat-row-val" style="color:#E8A33D;">$${unpaidTotal.toLocaleString()}</span></div>
+          <div class="stat-divider"></div>
+          <div class="stat-row"><span>總收入</span><span class="stat-row-val">$${totalFee.toLocaleString()}</span></div>
+        </div>
+      </div>
+    </div>
+
     <div class="card">
       <div class="cal-head">
         <div class="cal-nav"><button id="ovPrev">‹</button></div>
