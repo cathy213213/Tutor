@@ -2458,9 +2458,14 @@ const CHART_START_MONTH = 7; // August (0-indexed)
 function renderIncomeChart(){
   const area = $('#mainArea');
   const now = new Date();
+  let maxY = now.getFullYear(), maxM = now.getMonth();
+  state.schedules.forEach(sc=>{
+    const [y,m] = sc.date.split('-').map(Number);
+    if(y>maxY || (y===maxY && (m-1)>maxM)){ maxY=y; maxM=m-1; }
+  });
   const months = [];
   let cy = CHART_START_YEAR, cm = CHART_START_MONTH;
-  while(cy < now.getFullYear() || (cy===now.getFullYear() && cm<=now.getMonth())){
+  while(cy < maxY || (cy===maxY && cm<=maxM)){
     months.push({ y: cy, m: cm });
     cm++;
     if(cm>11){ cm=0; cy++; }
