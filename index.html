@@ -2452,13 +2452,18 @@ function pickStudentForPreview(mode){
   });
 }
 
+const CHART_START_YEAR = 2026;
+const CHART_START_MONTH = 7; // August (0-indexed)
+
 function renderIncomeChart(){
   const area = $('#mainArea');
   const now = new Date();
   const months = [];
-  for(let i=11; i>=0; i--){
-    const d = new Date(now.getFullYear(), now.getMonth()-i, 1);
-    months.push({ y: d.getFullYear(), m: d.getMonth() });
+  let cy = CHART_START_YEAR, cm = CHART_START_MONTH;
+  while(cy < now.getFullYear() || (cy===now.getFullYear() && cm<=now.getMonth())){
+    months.push({ y: cy, m: cm });
+    cm++;
+    if(cm>11){ cm=0; cy++; }
   }
   const data = months.map(({y,m})=>{
     const summary = allStudentsMonthSummary(y,m);
@@ -2484,14 +2489,15 @@ function renderIncomeChart(){
     ${backToMoreBanner()}
     <div class="card">
       <h3 class="section-title">📊 每月總收入</h3>
-      <div style="display:flex;align-items:flex-end;gap:4px;overflow-x:auto;padding-bottom:4px;">${incomeBars}</div>
+      <div class="chart-scroll" style="display:flex;align-items:flex-end;gap:4px;overflow-x:auto;padding-bottom:4px;">${incomeBars}</div>
     </div>
     <div class="card">
       <h3 class="section-title">📊 每月上課總時數</h3>
-      <div style="display:flex;align-items:flex-end;gap:4px;overflow-x:auto;padding-bottom:4px;">${hourBars}</div>
+      <div class="chart-scroll" style="display:flex;align-items:flex-end;gap:4px;overflow-x:auto;padding-bottom:4px;">${hourBars}</div>
     </div>
   `;
   bindBackToMoreBanner();
+  area.querySelectorAll('.chart-scroll').forEach(el=>{ el.scrollLeft = el.scrollWidth; });
 }
 
 function renderMoreTab(){
