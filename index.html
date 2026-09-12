@@ -2363,7 +2363,7 @@ function renderModeUI(){
 }
 
 function updateNavActiveState(){
-  const activeTab = (state.teacherTab==='profile') ? 'more' : state.teacherTab;
+  const activeTab = (state.teacherTab==='profile' || state.teacherTab==='incomeChart') ? 'more' : state.teacherTab;
   document.querySelectorAll('.nav-btn').forEach(btn=>{
     btn.classList.toggle('active', btn.dataset.tab === activeTab);
   });
@@ -2452,11 +2452,54 @@ function pickStudentForPreview(mode){
   });
 }
 
+function renderIncomeChart(){
+  const area = $('#mainArea');
+  const now = new Date();
+  const months = [];
+  for(let i=11; i>=0; i--){
+    const d = new Date(now.getFullYear(), now.getMonth()-i, 1);
+    months.push({ y: d.getFullYear(), m: d.getMonth() });
+  }
+  const data = months.map(({y,m})=>{
+    const summary = allStudentsMonthSummary(y,m);
+    const income = summary.reduce((sum,x)=> sum+(x.fee||0), 0);
+    const hours = summary.reduce((sum,x)=> sum+x.hours, 0);
+    return { y, m, income, hours };
+  });
+  const maxIncome = Math.max(1, ...data.map(d=>d.income));
+  const maxHours = Math.max(1, ...data.map(d=>d.hours));
+  const isCurrent = (d)=> d.y===now.getFullYear() && d.m===now.getMonth();
+
+  const barCol = (d, valueLabel, heightPx, barColor)=> `
+    <div style="display:flex;flex-direction:column;align-items:center;flex:1;min-width:38px;">
+      <div style="font-size:10px;color:var(--ink-soft);margin-bottom:4px;white-space:nowrap;">${valueLabel}</div>
+      <div style="width:60%;background:${barColor};border-radius:4px 4px 0 0;height:${Math.max(4,heightPx)}px;"></div>
+      <div style="font-size:10px;margin-top:6px;font-weight:${isCurrent(d)?'700':'400'};color:${isCurrent(d)?'var(--ink)':'var(--ink-soft)'};">${d.y}/${d.m+1}</div>
+    </div>`;
+
+  const incomeBars = data.map(d=> barCol(d, d.income ? '$'+Math.round(d.income/1000)+'k' : '$0', d.income/maxIncome*110, 'var(--red-soft)')).join('');
+  const hourBars = data.map(d=> barCol(d, d.hours ? d.hours.toFixed(0)+'h' : '0h', d.hours/maxHours*110, 'var(--teal-soft)')).join('');
+
+  area.innerHTML = `
+    ${backToMoreBanner()}
+    <div class="card">
+      <h3 class="section-title">📊 每月總收入</h3>
+      <div style="display:flex;align-items:flex-end;gap:4px;overflow-x:auto;padding-bottom:4px;">${incomeBars}</div>
+    </div>
+    <div class="card">
+      <h3 class="section-title">📊 每月上課總時數</h3>
+      <div style="display:flex;align-items:flex-end;gap:4px;overflow-x:auto;padding-bottom:4px;">${hourBars}</div>
+    </div>
+  `;
+  bindBackToMoreBanner();
+}
+
 function renderMoreTab(){
   const area = $('#mainArea');
   area.innerHTML = `
     <div class="card">
       <div class="sched-item" style="cursor:pointer;" id="moreProfileEdit"><span class="sched-when">👩🏻‍🏫老師介紹</span><span style="color:var(--ink-soft);">›</span></div>
+      <div class="sched-item" style="cursor:pointer;" id="moreIncomeChart"><span class="sched-when">📊 收入總表</span><span style="color:var(--ink-soft);">›</span></div>
       <div class="sched-item" style="cursor:pointer;" id="moreParentPreview"><span class="sched-when">👩🏻家長預覽</span><span style="color:var(--ink-soft);">›</span></div>
       <div class="sched-item" style="cursor:pointer;" id="moreStudentPreview"><span class="sched-when">👧🏻學生預覽</span><span style="color:var(--ink-soft);">›</span></div>
       <div class="sched-item" style="cursor:pointer;" id="moreExport"><span class="sched-when">↓ 匯出備份</span></div>
@@ -2468,6 +2511,7 @@ function renderMoreTab(){
     </div>
   `;
   $('#moreProfileEdit').addEventListener('click', ()=>{ state.teacherTab='profile'; render(); });
+  $('#moreIncomeChart').addEventListener('click', ()=>{ state.teacherTab='incomeChart'; render(); });
   $('#moreParentPreview').addEventListener('click', ()=> pickStudentForPreview('parent'));
   $('#moreStudentPreview').addEventListener('click', ()=> pickStudentForPreview('student'));
   $('#moreExport').addEventListener('click', exportBackup);
@@ -2572,6 +2616,7 @@ function render(){
     case 'calendar': renderOverview(); break;
     case 'more': renderMoreTab(); break;
     case 'profile': renderProfileEditor(); break;
+    case 'incomeChart': renderIncomeChart(); break;
     case 'course':
       if(!state.currentStudentId && state.students.length) state.currentStudentId = state.students[0].id;
       renderMain();
