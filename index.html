@@ -2443,13 +2443,13 @@ function renderStudentListTab(){
         <button class="add-trigger" id="toggleReorderStudents">${state.reorderStudents ? '完成排序' : '調整順序'}</button>
       </div>
       ${state.students.length ? state.students.map((s,i)=>`
-        <div class="sched-item">
-          <span class="sched-when" style="font-weight:700;cursor:pointer;" data-goto-student="${s.id}">${escapeHtml(s.name)}</span>
+        <div class="sched-item" style="cursor:pointer;" data-goto-student="${s.id}">
+          <span class="sched-when" style="font-weight:700;">${escapeHtml(s.name)}</span>
           <span style="display:flex;gap:10px;align-items:center;flex-shrink:0;">
             ${state.reorderStudents ? `
               <button data-move-student="${s.id}" data-dir="up" ${i===0?'disabled style="opacity:0.3;"':''}>▲</button>
               <button data-move-student="${s.id}" data-dir="down" ${i===state.students.length-1?'disabled style="opacity:0.3;"':''}>▼</button>
-            ` : `<span style="color:var(--ink-soft);cursor:pointer;" data-goto-student="${s.id}">›</span>`}
+            ` : `<span style="color:var(--ink-soft);">›</span>`}
           </span>
         </div>`).join('') : `<div class="sched-empty">尚未新增學生</div>`}
       <div class="sched-add-row"><button id="addStudentBtn2">＋ 新增學生</button></div>
@@ -2464,7 +2464,8 @@ function renderStudentListTab(){
     });
   });
   area.querySelectorAll('[data-move-student]').forEach(btn=>{
-    btn.addEventListener('click', async ()=>{
+    btn.addEventListener('click', async (e)=>{
+      e.stopPropagation();
       moveArrayItem(state.students, btn.dataset.moveStudent, btn.dataset.dir);
       await saveStudents();
       render();
