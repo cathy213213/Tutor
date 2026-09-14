@@ -666,7 +666,7 @@ function generateMonthlySummaryText(sid, year, month){
   const fee = rate ? Math.round(totalHours*rate) : null;
 
   const lines = [];
-  lines.push(`${year}年${month+1}月${s.name}☑️`);
+  lines.push(`${year}年${month+1}月${s.name}`);
   list.forEach(sc=>{
     const [yy,mm,dd] = sc.date.split('-');
     const dow = new Date(sc.date+'T00:00:00').getDay();
