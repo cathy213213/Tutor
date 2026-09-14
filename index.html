@@ -326,6 +326,13 @@ function toKey(d){ return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.get
 function todayKey(){ return toKey(new Date()); }
 function escapeHtml(str){ const div=document.createElement('div'); div.textContent=str; return div.innerHTML; }
 function formatTime(h,m){ return `${pad(h)}:${pad(m)}`; }
+function formatTimeRange(hour, minute, hours){
+  const startTotal = hour*60+minute;
+  const endTotal = startTotal + Math.round((hours||0)*60);
+  const endH = Math.floor(endTotal/60)%24;
+  const endM = endTotal%60;
+  return `${formatTime(hour,minute)}-${formatTime(endH,endM)}`;
+}
 function hourOptions(selected){
   let html='';
   for(let h=0; h<24; h++){ html += `<option value="${h}" ${h===selected?'selected':''}>${pad(h)}</option>`; }
@@ -648,6 +655,32 @@ function monthSchedulesFor(sid){
   const prefix = `${y}-${pad(m+1)}-`;
   return schedulesForStudent(sid).filter(s=> s.date.startsWith(prefix));
 }
+function generateMonthlySummaryText(sid, year, month){
+  const s = state.students.find(x=>x.id===sid);
+  if(!s) return '';
+  const prefix = `${year}-${pad(month+1)}-`;
+  const list = schedulesForStudent(sid).filter(sc=> sc.date.startsWith(prefix))
+    .sort((a,b)=> a.date.localeCompare(b.date) || (a.hour*60+a.minute)-(b.hour*60+b.minute));
+  const rate = rateForMonth(s, year, month);
+  const totalHours = list.reduce((sum,sc)=> sum+(sc.hours||0), 0);
+  const fee = rate ? Math.round(totalHours*rate) : null;
+
+  const lines = [];
+  lines.push(`${year}年${month+1}月${s.name}☑️`);
+  list.forEach(sc=>{
+    const [yy,mm,dd] = sc.date.split('-');
+    const dow = new Date(sc.date+'T00:00:00').getDay();
+    const startTotalMin = sc.hour*60+sc.minute;
+    const endTotalMin = startTotalMin + Math.round((sc.hours||0)*60);
+    const endH = Math.floor(endTotalMin/60)%24;
+    const endM = endTotalMin%60;
+    lines.push(`${Number(mm)}/${Number(dd)}（${dowNames[dow]}）${sc.hour}:${pad(sc.minute)}-${endH}:${pad(endM)}`);
+  });
+  const hoursLabel = Number.isInteger(totalHours) ? totalHours : totalHours.toFixed(1);
+  lines.push(`共${hoursLabel}小時（*${rate||0}）`);
+  lines.push(`📝${year}年${month+1}月上課費用為${fee!==null ? fee : 0}元`);
+  return lines.join('\n');
+}
 /* ---------- exam dates ---------- */
 function monthExamsFor(sid){
   const y = state.cursor.getFullYear(), m = state.cursor.getMonth();
@@ -843,7 +876,7 @@ function renderStudentView(){
       ${monthSched.length ? monthSched.map(sc=>{
         const dow = new Date(sc.date+'T00:00:00').getDay();
         const [yy,mm,dd] = sc.date.split('-');
-        return `<div class="sched-item"><span class="sched-when">${Number(mm)}/${Number(dd)}（${dayNames[dow]}）　${formatTime(sc.hour,sc.minute)}</span></div>`;
+        return `<div class="sched-item"><span class="sched-when">${Number(mm)}/${Number(dd)}（${dayNames[dow]}）　${formatTimeRange(sc.hour,sc.minute,sc.hours)}・${sc.hours||0}小時</span></div>`;
       }).join('') : `<div class="sched-empty">這個月尚未排定上課時段</div>`}
     </div>
 
@@ -2021,7 +2054,7 @@ function renderMain(){
         const dow = new Date(sc.date+'T00:00:00').getDay();
         const [y,m,d] = sc.date.split('-');
         return `<div class="sched-item">
-          <span class="sched-when">${Number(m)}/${Number(d)}（${dayNames[dow]}）　${formatTime(sc.hour,sc.minute)}・${sc.hours||0}小時</span>
+          <span class="sched-when">${Number(m)}/${Number(d)}（${dayNames[dow]}）　${formatTimeRange(sc.hour,sc.minute,sc.hours)}・${sc.hours||0}小時</span>
           ${state.viewMode==='teacher' ? `
             <span style="display:flex;gap:12px">
               <button data-move="${sc.id}" style="color:var(--ink-soft)">移動</button>
@@ -2034,6 +2067,13 @@ function renderMain(){
           <button id="addSchedBtn">＋ 新增上課時段</button>
         </div>` : ''}
     </div>
+
+    ${state.viewMode==='teacher' ? `
+    <div class="card">
+      <h3 class="section-title">📋 本月課程訊息（可複製）</h3>
+      <textarea id="summaryTextOutput" readonly style="width:100%;min-height:200px;font-family:'Noto Sans TC',sans-serif;font-size:13px;color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:10px;white-space:pre-wrap;resize:vertical;">${generateMonthlySummaryText(s.id, cy, cm)}</textarea>
+      <div style="margin-top:10px;"><button class="btn btn-primary" id="copySummaryTextBtn">複製文字</button></div>
+    </div>` : ''}
 
     <div class="card">
       <h3 class="section-title">重要考試日期</h3>
@@ -2099,6 +2139,17 @@ function renderMain(){
     $('#delStudentBtn').addEventListener('click', deleteStudent);
     $('#addTrigger').addEventListener('click', ()=> openForm(null, toKey(new Date())));
     $('#addSchedBtn').addEventListener('click', ()=> addSchedule(s.id));
+    $('#copySummaryTextBtn').addEventListener('click', async ()=>{
+      const ta = $('#summaryTextOutput');
+      try{
+        await navigator.clipboard.writeText(ta.value);
+        showToast('已複製');
+      }catch(e){
+        ta.focus();
+        ta.select();
+        showToast('請手動複製（已反白選取）');
+      }
+    });
     $('#addExamBtn').addEventListener('click', ()=> addExamItem(s.id));
     $('#saveSummaryBtn').addEventListener('click', async ()=>{
       const text = $('#summaryText').value.trim();
