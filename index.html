@@ -1637,7 +1637,7 @@ function renderOverview(){
     if(list.length) classes.push('clickable');
     html += `<div class="${classes.join(' ')}" data-date="${key}">
       <span class="ov-num">${d}</span>
-      ${list.map(x=>`<span class="ov-entry">${x.time}${escapeHtml(x.studentName)}</span>`).join('')}
+      ${list.map(x=>`<span class="ov-entry">${escapeHtml(x.studentName)}${x.time}</span>`).join('')}
     </div>`;
   }
   $('#ovCalGrid').innerHTML = html;
