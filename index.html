@@ -662,7 +662,8 @@ function generateMonthlySummaryText(sid, year, month){
   const list = schedulesForStudent(sid).filter(sc=> sc.date.startsWith(prefix))
     .sort((a,b)=> a.date.localeCompare(b.date) || (a.hour*60+a.minute)-(b.hour*60+b.minute));
   const rate = rateForMonth(s, year, month);
-  const totalHours = list.reduce((sum,sc)=> sum+(sc.excludeFromBilling ? 0 : (sc.hours||0)), 0);
+  const billing = billableHoursForMonth(sid, year, month);
+  const totalHours = billing.total;
   const fee = rate ? Math.round(totalHours*rate) : null;
 
   const lines = [];
@@ -677,6 +678,7 @@ function generateMonthlySummaryText(sid, year, month){
     const excludeNote = sc.excludeFromBilling ? `（${sc.excludeReason||'不列入本月費用'}）` : '';
     lines.push(`${Number(mm)}/${Number(dd)}（${dowNames[dow]}）${sc.hour}:${pad(sc.minute)}-${endH}:${pad(endM)}${excludeNote}`);
   });
+  if(billing.deferredIn>0) lines.push(`（含上月遞延 ${billing.deferredIn}小時）`);
   const hoursLabel = Number.isInteger(totalHours) ? totalHours : totalHours.toFixed(1);
   lines.push(`共${hoursLabel}小時（*${rate||0}）`);
   lines.push(`📝${year}年${month+1}月上課費用為${fee!==null ? fee : 0}元`);
@@ -766,11 +768,22 @@ async function saveSummaryText(sid, year, month, text){
 }
 
 /* ---------- overview: all students combined ---------- */
+function billableHoursForMonth(sid, year, month){
+  const prefix = `${year}-${pad(month+1)}-`;
+  const ownHours = state.schedules.filter(x=>x.studentId===sid && x.date.startsWith(prefix))
+    .reduce((sum,sc)=> sum + (sc.excludeFromBilling ? 0 : (sc.hours||0)), 0);
+  let py = year, pm = month-1;
+  if(pm<0){ pm = 11; py--; }
+  const prevPrefix = `${py}-${pad(pm+1)}-`;
+  const deferredIn = state.schedules.filter(x=>x.studentId===sid && x.date.startsWith(prevPrefix) && x.excludeFromBilling && x.deferToNextMonth)
+    .reduce((sum,sc)=> sum + (sc.hours||0), 0);
+  return { total: ownHours+deferredIn, ownHours, deferredIn };
+}
 function allStudentsMonthSummary(year, month){
   const prefix = `${year}-${pad(month+1)}-`;
   return state.students.filter(s=>!s.excludeFromOverview).map(s=>{
     const sched = state.schedules.filter(x=>x.studentId===s.id && x.date.startsWith(prefix));
-    const hours = sched.reduce((sum,sc)=> sum + (sc.excludeFromBilling ? 0 : (sc.hours||0)), 0);
+    const hours = billableHoursForMonth(s.id, year, month).total;
     const fee = rateForMonth(s, year, month) ? Math.round(hours * rateForMonth(s, year, month)) : null;
     return { id: s.id, name: s.name, hours, fee, count: sched.length };
   });
@@ -1818,6 +1831,43 @@ function manageRates(sid){
   });
 }
 
+function exclusionFieldsHtml(sc){
+  const ex = sc || {};
+  const presets = ['試教','前月已溢繳','下月補繳'];
+  const currentReason = ex.excludeReason || '';
+  const isCustom = currentReason && !presets.includes(currentReason);
+  return `
+    <div class="field" style="display:flex;align-items:center;gap:8px;">
+      <input type="checkbox" id="m-exclude" style="width:auto;" ${ex.excludeFromBilling?'checked':''}>
+      <label for="m-exclude" style="margin:0;">這堂不列入本月課程費用</label>
+    </div>
+    <div class="field" id="m-exclude-reason-wrap" style="${ex.excludeFromBilling?'':'display:none;'}">
+      <label>原因</label>
+      <select id="m-exclude-reason-type">
+        <option value="試教" ${currentReason==='試教'?'selected':''}>試教</option>
+        <option value="前月已溢繳" ${currentReason==='前月已溢繳'?'selected':''}>前月已溢繳</option>
+        <option value="下月補繳" ${currentReason==='下月補繳'?'selected':''}>下月補繳（自動計入下月費用）</option>
+        <option value="其他" ${isCustom?'selected':''}>其他</option>
+      </select>
+      <input type="text" id="m-exclude-reason-custom" placeholder="自訂原因" value="${isCustom?escapeHtml(currentReason):''}" style="margin-top:8px;${isCustom?'':'display:none;'}">
+    </div>`;
+}
+function wireExclusionFields(){
+  const checkbox = $('#m-exclude');
+  const wrap = $('#m-exclude-reason-wrap');
+  const typeSelect = $('#m-exclude-reason-type');
+  const customInput = $('#m-exclude-reason-custom');
+  checkbox.addEventListener('change', ()=>{ wrap.style.display = checkbox.checked ? '' : 'none'; });
+  typeSelect.addEventListener('change', ()=>{ customInput.style.display = typeSelect.value==='其他' ? '' : 'none'; });
+}
+function readExclusionFields(){
+  const excludeFromBilling = $('#m-exclude').checked;
+  if(!excludeFromBilling) return { excludeFromBilling:false, excludeReason:'', deferToNextMonth:false };
+  const typeVal = $('#m-exclude-reason-type').value;
+  const reason = typeVal==='其他' ? ($('#m-exclude-reason-custom').value.trim() || '其他') : typeVal;
+  return { excludeFromBilling:true, excludeReason: reason, deferToNextMonth: typeVal==='下月補繳' };
+}
+
 function addSchedule(sid){
   showModal(`
     <h3>新增上課時段</h3>
@@ -1831,22 +1881,13 @@ function addSchedule(sid){
       <label>重複幾週（含起始這週）</label>
       <select id="m-weeks">${[1,2,3,4,5,6,8,10,12].map(n=>`<option value="${n}" ${n===4?'selected':''}>${n===1?'只有這一次':n+' 週'}</option>`).join('')}</select>
     </div>
-    <div class="field" style="display:flex;align-items:center;gap:8px;">
-      <input type="checkbox" id="m-exclude" style="width:auto;">
-      <label for="m-exclude" style="margin:0;">不列入本月課程費用</label>
-    </div>
-    <div class="field" id="m-exclude-reason-wrap" style="display:none;">
-      <label>原因</label>
-      <input type="text" id="m-exclude-reason" placeholder="例如：試教／前月已溢繳／下月補繳">
-    </div>
+    ${exclusionFieldsHtml(null)}
     <div class="modal-actions">
       <button class="btn btn-ghost" id="m-cancel">取消</button>
       <button class="btn btn-primary" id="m-save">新增</button>
     </div>
   `);
-  $('#m-exclude').addEventListener('change', ()=>{
-    $('#m-exclude-reason-wrap').style.display = $('#m-exclude').checked ? '' : 'none';
-  });
+  wireExclusionFields();
   $('#m-cancel').addEventListener('click', closeModal);
   $('#m-save').addEventListener('click', async ()=>{
     const startDate = $('#m-date').value;
@@ -1855,11 +1896,10 @@ function addSchedule(sid){
     const minute = Number($('#m-min').value);
     const hours = $('#m-hours').value ? Number($('#m-hours').value) : 1.5;
     const weeks = Number($('#m-weeks').value);
-    const excludeFromBilling = $('#m-exclude').checked;
-    const excludeReason = excludeFromBilling ? ($('#m-exclude-reason').value.trim() || '試教') : '';
+    const exclusion = readExclusionFields();
     let d = new Date(startDate+'T00:00:00');
     for(let i=0;i<weeks;i++){
-      state.schedules.push({ id: uid(), studentId: sid, date: toKey(d), hour, minute, hours, excludeFromBilling, excludeReason });
+      state.schedules.push({ id: uid(), studentId: sid, date: toKey(d), hour, minute, hours, ...exclusion });
       d.setDate(d.getDate()+7);
     }
     closeModal();
@@ -1879,22 +1919,13 @@ function moveSchedule(id){
       <div class="field"><label>分</label><select id="m-min">${minuteOptions(s.minute)}</select></div>
     </div>
     <div class="field"><label>這堂時數（小時）</label><input type="number" id="m-hours" step="0.5" min="0.5" value="${s.hours ?? 1.5}"></div>
-    <div class="field" style="display:flex;align-items:center;gap:8px;">
-      <input type="checkbox" id="m-exclude" style="width:auto;" ${s.excludeFromBilling?'checked':''}>
-      <label for="m-exclude" style="margin:0;">這堂不列入本月課程費用</label>
-    </div>
-    <div class="field" id="m-exclude-reason-wrap" style="${s.excludeFromBilling?'':'display:none;'}">
-      <label>原因</label>
-      <input type="text" id="m-exclude-reason" value="${escapeHtml(s.excludeReason||'')}" placeholder="例如：試教／前月已溢繳／下月補繳">
-    </div>
+    ${exclusionFieldsHtml(s)}
     <div class="modal-actions">
       <button class="btn btn-ghost" id="m-cancel">取消</button>
       <button class="btn btn-primary" id="m-save">儲存</button>
     </div>
   `);
-  $('#m-exclude').addEventListener('change', ()=>{
-    $('#m-exclude-reason-wrap').style.display = $('#m-exclude').checked ? '' : 'none';
-  });
+  wireExclusionFields();
   $('#m-cancel').addEventListener('click', closeModal);
   $('#m-save').addEventListener('click', async ()=>{
     const newDate = $('#m-date').value;
@@ -1903,8 +1934,7 @@ function moveSchedule(id){
     s.hour = Number($('#m-hour').value);
     s.minute = Number($('#m-min').value);
     s.hours = $('#m-hours').value ? Number($('#m-hours').value) : 1.5;
-    s.excludeFromBilling = $('#m-exclude').checked;
-    s.excludeReason = s.excludeFromBilling ? ($('#m-exclude-reason').value.trim() || '試教') : '';
+    Object.assign(s, readExclusionFields());
     closeModal();
     await saveSchedules();
     render();
@@ -2041,8 +2071,9 @@ function renderMain(){
   const monthList = monthLessonsFor(s.id);
   const monthSched = monthSchedulesFor(s.id);
   const monthExams = monthExamsFor(s.id);
-  const totalHours = monthSched.reduce((sum,sc)=> sum + (sc.excludeFromBilling ? 0 : (sc.hours||0)), 0);
   const cy = state.cursor.getFullYear(), cm = state.cursor.getMonth();
+  const billing = billableHoursForMonth(s.id, cy, cm);
+  const totalHours = billing.total;
   const rate = rateForMonth(s, cy, cm);
   const fee = rate ? Math.round(totalHours * rate) : null;
   const paid = isPaidForMonth(s.id, cy, cm);
@@ -2072,6 +2103,7 @@ function renderMain(){
         <div class="fee-item"><div class="num">${totalHours ? totalHours.toFixed(1) : 0}</div><div class="lbl">本月時數</div></div>
         <div class="fee-item total"><div class="num">${fee!==null ? '$'+fee.toLocaleString() : '—'}</div><div class="lbl">本月學費</div></div>
       </div>
+      ${billing.deferredIn>0 ? `<p style="font-size:11px;color:#E8A33D;margin:8px 0 0;">＋含上月遞延 ${billing.deferredIn}小時</p>` : ''}
       <button id="payBadge" class="pay-badge ${paid?'paid':'unpaid'} ${state.viewMode==='teacher'?'clickable':''}">${paid ? '✅ 學費已收' : '⏳ 學費未收'}</button>
     </div>
 
