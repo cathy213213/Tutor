@@ -1941,6 +1941,34 @@ function moveSchedule(id){
   });
 }
 
+function addExtraTime(sourceId){
+  const src = state.schedules.find(x=>x.id===sourceId);
+  if(!src) return;
+  showModal(`
+    <h3>本堂加時（延至下月計費）</h3>
+    <p style="font-size:13px;color:var(--ink-soft);">用在「這堂已經算進本月費用、家長也繳完了，但後來又多上了一段時間」的情況——原本那堂完全不動，只把多出來的時數另外記一筆，自動延到下個月計費。</p>
+    <div class="field"><label>多加了幾小時</label><input type="number" id="m-extra-hours" step="0.5" min="0.5" value="0.5"></div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" id="m-cancel">取消</button>
+      <button class="btn btn-primary" id="m-save">新增</button>
+    </div>
+  `);
+  $('#m-cancel').addEventListener('click', closeModal);
+  $('#m-save').addEventListener('click', async ()=>{
+    const extra = $('#m-extra-hours').value ? Number($('#m-extra-hours').value) : 0.5;
+    const startTotal = src.hour*60 + src.minute + Math.round((src.hours||0)*60);
+    const hh = Math.floor(startTotal/60)%24, mm = startTotal%60;
+    state.schedules.push({
+      id: uid(), studentId: src.studentId, date: src.date,
+      hour: hh, minute: mm, hours: extra,
+      excludeFromBilling: true, excludeReason: '下月補繳', deferToNextMonth: true
+    });
+    closeModal();
+    await saveSchedules();
+    render();
+  });
+}
+
 function deleteSchedule(id){
   showModal(`
     <h3>刪除時段</h3>
@@ -2118,7 +2146,8 @@ function renderMain(){
             ${sc.excludeFromBilling ? `<span style="font-size:11px;color:#E8A33D;margin-top:3px;">⚠️ 不列入本月費用${sc.excludeReason ? '（'+escapeHtml(sc.excludeReason)+'）' : ''}</span>` : ''}
           </span>
           ${state.viewMode==='teacher' ? `
-            <span style="display:flex;gap:12px;flex-shrink:0;">
+            <span style="display:flex;gap:12px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end;">
+              <button data-extra="${sc.id}" style="color:var(--teal)">加時</button>
               <button data-move="${sc.id}" style="color:var(--ink-soft)">移動</button>
               <button data-delsched="${sc.id}">刪除</button>
             </span>` : ''}
@@ -2218,6 +2247,7 @@ function renderMain(){
       await saveSummaryText(s.id, cy, cm, text);
       showToast('已儲存本月摘要');
     });
+    area.querySelectorAll('[data-extra]').forEach(btn=> btn.addEventListener('click', ()=> addExtraTime(btn.dataset.extra)));
     area.querySelectorAll('[data-move]').forEach(btn=> btn.addEventListener('click', ()=> moveSchedule(btn.dataset.move)));
     area.querySelectorAll('[data-delsched]').forEach(btn=> btn.addEventListener('click', ()=> deleteSchedule(btn.dataset.delsched)));
     area.querySelectorAll('[data-edit-exam]').forEach(btn=> btn.addEventListener('click', ()=> editExamItem(btn.dataset.editExam)));
