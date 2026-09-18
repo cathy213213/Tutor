@@ -1565,6 +1565,17 @@ function renderOverview(){
 
   area.innerHTML = `
     <div class="card">
+      <div class="cal-head">
+        <div class="cal-nav"><button id="ovPrev">‹</button></div>
+        <h2>${y} 年 ${m+1} 月・全部學生</h2>
+        <div class="cal-nav"><button id="ovNext">›</button></div>
+      </div>
+      <div class="grid7">${dowNames.map(d=>`<div class="dow">${d}</div>`).join('')}</div>
+      <div class="ov-grid7" id="ovCalGrid"></div>
+      <div class="legend"><span><i style="background:transparent;border:1px solid var(--red)"></i>今天</span></div>
+    </div>
+
+    <div class="card">
       <div class="stat-hero">
         <div class="stat-label">📅 本月預估總收入</div>
         <div class="stat-num">$${totalFee.toLocaleString()}</div>
@@ -1590,17 +1601,6 @@ function renderOverview(){
           <div class="stat-row"><span>總收入</span><span class="stat-row-val">$${totalFee.toLocaleString()}</span></div>
         </div>
       </div>
-    </div>
-
-    <div class="card">
-      <div class="cal-head">
-        <div class="cal-nav"><button id="ovPrev">‹</button></div>
-        <h2>${y} 年 ${m+1} 月・全部學生</h2>
-        <div class="cal-nav"><button id="ovNext">›</button></div>
-      </div>
-      <div class="grid7">${dowNames.map(d=>`<div class="dow">${d}</div>`).join('')}</div>
-      <div class="ov-grid7" id="ovCalGrid"></div>
-      <div class="legend"><span><i style="background:transparent;border:1px solid var(--red)"></i>今天</span></div>
     </div>
 
     <div class="card">
