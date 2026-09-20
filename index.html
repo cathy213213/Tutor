@@ -676,7 +676,8 @@ function generateMonthlySummaryText(sid, year, month){
     const endH = Math.floor(endTotalMin/60)%24;
     const endM = endTotalMin%60;
     const excludeNote = sc.excludeFromBilling ? `（${sc.excludeReason||'不列入本月費用'}）` : '';
-    lines.push(`${Number(mm)}/${Number(dd)}（${dowNames[dow]}）${sc.hour}:${pad(sc.minute)}-${endH}:${pad(endM)}${excludeNote}`);
+    const extraNote = sc.note ? `（${sc.note}）` : '';
+    lines.push(`${Number(mm)}/${Number(dd)}（${dowNames[dow]}）${sc.hour}:${pad(sc.minute)}-${endH}:${pad(endM)}${excludeNote}${extraNote}`);
   });
   if(billing.deferredIn>0) lines.push(`（含上月遞延 ${billing.deferredIn}小時）`);
   const hoursLabel = Number.isInteger(totalHours) ? totalHours : totalHours.toFixed(1);
@@ -1867,6 +1868,14 @@ function readExclusionFields(){
   const reason = typeVal==='其他' ? ($('#m-exclude-reason-custom').value.trim() || '其他') : typeVal;
   return { excludeFromBilling:true, excludeReason: reason, deferToNextMonth: typeVal==='下月補繳' };
 }
+function noteFieldHtml(sc){
+  const note = (sc && sc.note) || '';
+  return `
+    <div class="field">
+      <label>備註（給家長看，純顯示、不影響費用）</label>
+      <input type="text" id="m-note" value="${escapeHtml(note)}" placeholder="例如：已改期，順延至10/6上課">
+    </div>`;
+}
 
 function addSchedule(sid){
   showModal(`
@@ -1919,6 +1928,7 @@ function moveSchedule(id){
       <div class="field"><label>分</label><select id="m-min">${minuteOptions(s.minute)}</select></div>
     </div>
     <div class="field"><label>這堂時數（小時）</label><input type="number" id="m-hours" step="0.5" min="0.5" value="${s.hours ?? 1.5}"></div>
+    ${noteFieldHtml(s)}
     ${exclusionFieldsHtml(s)}
     <div class="modal-actions">
       <button class="btn btn-ghost" id="m-cancel">取消</button>
@@ -1934,6 +1944,7 @@ function moveSchedule(id){
     s.hour = Number($('#m-hour').value);
     s.minute = Number($('#m-min').value);
     s.hours = $('#m-hours').value ? Number($('#m-hours').value) : 1.5;
+    s.note = $('#m-note').value.trim();
     Object.assign(s, readExclusionFields());
     closeModal();
     await saveSchedules();
@@ -2144,6 +2155,7 @@ function renderMain(){
           <span class="sched-when" style="display:flex;flex-direction:column;">
             <span>${Number(m)}/${Number(d)}（${dayNames[dow]}）　${formatTimeRange(sc.hour,sc.minute,sc.hours)}・${sc.hours||0}小時</span>
             ${sc.excludeFromBilling ? `<span style="font-size:11px;color:#E8A33D;margin-top:3px;">⚠️ 不列入本月費用${sc.excludeReason ? '（'+escapeHtml(sc.excludeReason)+'）' : ''}</span>` : ''}
+            ${sc.note ? `<span style="font-size:11px;color:var(--teal);margin-top:3px;">📌 ${escapeHtml(sc.note)}</span>` : ''}
           </span>
           ${state.viewMode==='teacher' ? `
             <span style="display:flex;gap:12px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end;">
