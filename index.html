@@ -662,9 +662,9 @@ function generateMonthlySummaryText(sid, year, month){
   const list = schedulesForStudent(sid).filter(sc=> sc.date.startsWith(prefix))
     .sort((a,b)=> a.date.localeCompare(b.date) || (a.hour*60+a.minute)-(b.hour*60+b.minute));
   const rate = rateForMonth(s, year, month);
-  const billing = billableHoursForMonth(sid, year, month);
-  const totalHours = billing.total;
-  const fee = rate ? Math.round(totalHours*rate) : null;
+  const feeInfo = feeInfoForMonth(sid, year, month);
+  const totalHours = feeInfo.hours;
+  const fee = feeInfo.finalFee;
 
   const lines = [];
   lines.push(`${year}年${month+1}月${s.name}`);
@@ -679,9 +679,12 @@ function generateMonthlySummaryText(sid, year, month){
     const extraNote = sc.note ? `（${sc.note}）` : '';
     lines.push(`${Number(mm)}/${Number(dd)}（${dowNames[dow]}）${sc.hour}:${pad(sc.minute)}-${endH}:${pad(endM)}${excludeNote}${extraNote}`);
   });
-  if(billing.deferredIn>0) lines.push(`（含上月遞延 ${billing.deferredIn}小時）`);
+  if(feeInfo.deferredIn>0) lines.push(`（含上月遞延 ${feeInfo.deferredIn}小時）`);
   const hoursLabel = Number.isInteger(totalHours) ? totalHours : totalHours.toFixed(1);
   lines.push(`共${hoursLabel}小時（*${rate||0}）`);
+  if(feeInfo.milestone.hit){
+    lines.push(`🏷️累積上課時數達${feeInfo.milestone.milestone}小時，本月享9折優惠（折扣$${feeInfo.discountAmt}，原價$${feeInfo.baseFee}）`);
+  }
   lines.push(`📝${year}年${month+1}月上課費用為${fee!==null ? fee : 0}元`);
   return lines.join('\n');
 }
@@ -780,13 +783,40 @@ function billableHoursForMonth(sid, year, month){
     .reduce((sum,sc)=> sum + (sc.hours||0), 0);
   return { total: ownHours+deferredIn, ownHours, deferredIn };
 }
+function cumulativeHoursThrough(sid, year, month){
+  const cutoff = `${year}-${pad(month+1)}-31`;
+  return state.schedules.filter(x=> x.studentId===sid && x.date<=cutoff)
+    .reduce((sum,sc)=> sum+(sc.hours||0), 0);
+}
+function milestoneDiscountForMonth(sid, year, month){
+  const cumNow = cumulativeHoursThrough(sid, year, month);
+  let py=year, pm=month-1;
+  if(pm<0){ pm=11; py--; }
+  const cumPrev = cumulativeHoursThrough(sid, py, pm);
+  const msNow = Math.floor(cumNow/50);
+  const msPrev = Math.floor(cumPrev/50);
+  if(msNow>msPrev && msNow>0) return { hit:true, milestone: msNow*50 };
+  return { hit:false, milestone:0 };
+}
+function feeInfoForMonth(sid, year, month){
+  const s = state.students.find(x=>x.id===sid);
+  const billing = billableHoursForMonth(sid, year, month);
+  const rate = s ? rateForMonth(s, year, month) : null;
+  const baseFee = rate ? Math.round(billing.total*rate) : null;
+  const milestone = milestoneDiscountForMonth(sid, year, month);
+  let discountAmt = 0, finalFee = baseFee;
+  if(baseFee!==null && milestone.hit){
+    discountAmt = Math.round(baseFee*0.1);
+    finalFee = baseFee - discountAmt;
+  }
+  return { hours: billing.total, deferredIn: billing.deferredIn, rate, baseFee, milestone, discountAmt, finalFee };
+}
 function allStudentsMonthSummary(year, month){
   const prefix = `${year}-${pad(month+1)}-`;
   return state.students.filter(s=>!s.excludeFromOverview).map(s=>{
     const sched = state.schedules.filter(x=>x.studentId===s.id && x.date.startsWith(prefix));
-    const hours = billableHoursForMonth(s.id, year, month).total;
-    const fee = rateForMonth(s, year, month) ? Math.round(hours * rateForMonth(s, year, month)) : null;
-    return { id: s.id, name: s.name, hours, fee, count: sched.length };
+    const feeInfo = feeInfoForMonth(s.id, year, month);
+    return { id: s.id, name: s.name, hours: feeInfo.hours, fee: feeInfo.finalFee, count: sched.length };
   });
 }
 function combinedOccurrencesForDate(dateKey){
@@ -859,6 +889,10 @@ function renderStudentView(){
     <div class="card" style="text-align:center;">
       <div style="font-size:13px;color:var(--ink-soft);margin-bottom:4px;">${escapeHtml(s.name)} 同學</div>
       <div style="font-size:18px;font-weight:700;">加油！繼續保持 💪</div>
+    </div>
+    <div class="card" style="text-align:center;">
+      <div style="font-size:12px;color:var(--ink-soft);">累積上課時數</div>
+      <div style="font-size:24px;font-weight:700;font-family:'Noto Serif TC',serif;color:var(--teal);">${cumulativeHoursThrough(s.id, state.cursor.getFullYear(), state.cursor.getMonth()).toFixed(1)} 小時</div>
     </div>
     <div class="card">
       <h3 class="section-title">📅 下一次上課時間</h3>
@@ -2111,10 +2145,11 @@ function renderMain(){
   const monthSched = monthSchedulesFor(s.id);
   const monthExams = monthExamsFor(s.id);
   const cy = state.cursor.getFullYear(), cm = state.cursor.getMonth();
-  const billing = billableHoursForMonth(s.id, cy, cm);
-  const totalHours = billing.total;
-  const rate = rateForMonth(s, cy, cm);
-  const fee = rate ? Math.round(totalHours * rate) : null;
+  const feeInfo = feeInfoForMonth(s.id, cy, cm);
+  const totalHours = feeInfo.hours;
+  const rate = feeInfo.rate;
+  const fee = feeInfo.finalFee;
+  const cumHours = cumulativeHoursThrough(s.id, cy, cm);
   const paid = isPaidForMonth(s.id, cy, cm);
   const summaryText = getSummaryText(s.id, cy, cm);
 
@@ -2126,6 +2161,7 @@ function renderMain(){
         <div class="student-name-row">
           <span class="student-name">${escapeHtml(s.name)}</span>
           <span class="student-rate">${rate ? `本月 $${rate}/hr` : '尚未設定時薪'}</span>
+          <span class="student-rate">累積 ${cumHours.toFixed(1)}hr</span>
         </div>
         ${state.viewMode==='teacher' ? `
           <div class="student-actions">
@@ -2140,9 +2176,10 @@ function renderMain(){
       <div class="fee-summary">
         <div class="fee-item"><div class="num">${monthSched.length}</div><div class="lbl">本月堂數</div></div>
         <div class="fee-item"><div class="num">${totalHours ? totalHours.toFixed(1) : 0}</div><div class="lbl">本月時數</div></div>
-        <div class="fee-item total"><div class="num">${fee!==null ? '$'+fee.toLocaleString() : '—'}</div><div class="lbl">本月學費</div></div>
+        <div class="fee-item total"><div class="num">${feeInfo.milestone.hit && feeInfo.baseFee!==null ? `<span style="font-size:14px;font-weight:400;color:var(--ink-soft);text-decoration:line-through;margin-right:6px;">$${feeInfo.baseFee.toLocaleString()}</span>$${fee.toLocaleString()}` : (fee!==null ? '$'+fee.toLocaleString() : '—')}</div><div class="lbl">本月學費</div></div>
       </div>
-      ${billing.deferredIn>0 ? `<p style="font-size:11px;color:#E8A33D;margin:8px 0 0;">＋含上月遞延 ${billing.deferredIn}小時</p>` : ''}
+      ${feeInfo.deferredIn>0 ? `<p style="font-size:11px;color:#E8A33D;margin:8px 0 0;">＋含上月遞延 ${feeInfo.deferredIn}小時</p>` : ''}
+      ${feeInfo.milestone.hit ? `<p style="font-size:12px;color:var(--teal);margin:8px 0 0;font-weight:600;">🏷️ 累積上課時數達${feeInfo.milestone.milestone}小時，本月學費享9折優惠（折扣 $${feeInfo.discountAmt.toLocaleString()}）</p>` : ''}
       <button id="payBadge" class="pay-badge ${paid?'paid':'unpaid'} ${state.viewMode==='teacher'?'clickable':''}">${paid ? '✅ 學費已收' : '⏳ 學費未收'}</button>
     </div>
 
