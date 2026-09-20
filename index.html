@@ -352,7 +352,7 @@ const EXAM_TYPES = {
 const DEFAULT_APP_TAGLINE = '希望孩子的數學能夠越來越穩定進步💪🏻讓我們一起努力吧🌷';
 const DEFAULT_ABOUT_TAGLINE = '10年以上高中數學教學經驗｜合格教師證｜雙碩士｜線上高中數學教師🧮';
 function defaultProfile(){
-  return { name:'', photoUrl:'', education:'', experience:'', experiencePhotoUrl:'', educationList:[], teachingHistory:[], testimonials:[], classPhotos:[], appTagline: DEFAULT_APP_TAGLINE, aboutTagline: DEFAULT_ABOUT_TAGLINE, email:'', lineUrl:'' };
+  return { name:'', photoUrl:'', education:'', experience:'', experiencePhotoUrl:'', educationList:[], teachingHistory:[], testimonials:[], classPhotos:[], appTagline: DEFAULT_APP_TAGLINE, aboutTagline: DEFAULT_ABOUT_TAGLINE, email:'', lineUrl:'', discountEnabled:true, discountEveryHours:50, discountPercent:10 };
 }
 function moveArrayItem(arr, id, dir){
   const idx = arr.findIndex(x=>x.id===id);
@@ -454,6 +454,9 @@ async function loadData(){
     if(p.aboutTagline===undefined){ p.aboutTagline = DEFAULT_ABOUT_TAGLINE; profileChanged = true; }
     if(p.email===undefined){ p.email = ''; profileChanged = true; }
     if(p.lineUrl===undefined){ p.lineUrl = ''; profileChanged = true; }
+    if(p.discountEnabled===undefined){ p.discountEnabled = true; profileChanged = true; }
+    if(p.discountEveryHours===undefined){ p.discountEveryHours = 50; profileChanged = true; }
+    if(p.discountPercent===undefined){ p.discountPercent = 10; profileChanged = true; }
     if(p.educationList===undefined){
       profileChanged = true;
       if(typeof p.education === 'string' && p.education.trim()){
@@ -789,13 +792,16 @@ function cumulativeHoursThrough(sid, year, month){
     .reduce((sum,sc)=> sum+(sc.hours||0), 0);
 }
 function milestoneDiscountForMonth(sid, year, month){
+  const prof = state.profile || {};
+  if(prof.discountEnabled===false) return { hit:false, milestone:0 };
+  const every = prof.discountEveryHours || 50;
   const cumNow = cumulativeHoursThrough(sid, year, month);
   let py=year, pm=month-1;
   if(pm<0){ pm=11; py--; }
   const cumPrev = cumulativeHoursThrough(sid, py, pm);
-  const msNow = Math.floor(cumNow/50);
-  const msPrev = Math.floor(cumPrev/50);
-  if(msNow>msPrev && msNow>0) return { hit:true, milestone: msNow*50 };
+  const msNow = Math.floor(cumNow/every);
+  const msPrev = Math.floor(cumPrev/every);
+  if(msNow>msPrev && msNow>0) return { hit:true, milestone: msNow*every };
   return { hit:false, milestone:0 };
 }
 function feeInfoForMonth(sid, year, month){
@@ -806,7 +812,8 @@ function feeInfoForMonth(sid, year, month){
   const milestone = milestoneDiscountForMonth(sid, year, month);
   let discountAmt = 0, finalFee = baseFee;
   if(baseFee!==null && milestone.hit){
-    discountAmt = Math.round(baseFee*0.1);
+    const pct = (state.profile && state.profile.discountPercent!==undefined) ? state.profile.discountPercent : 10;
+    discountAmt = Math.round(baseFee*(pct/100));
     finalFee = baseFee - discountAmt;
   }
   return { hours: billing.total, deferredIn: billing.deferredIn, rate, baseFee, milestone, discountAmt, finalFee };
@@ -1095,11 +1102,32 @@ function renderProfileEditor(){
       </div>
       <div style="margin-top:6px;"><button class="btn btn-primary" id="saveContactBtn">儲存聯絡方式</button></div>
     </div>
+
+    <div class="card">
+      <h3 class="section-title">🏷️ 忠誠優惠設定</h3>
+      <p style="font-size:12px;color:var(--ink-soft);margin:0 0 12px;">學生累積上課時數每滿一個門檻，當月自動打折，感謝長期上課的家庭。</p>
+      <div class="field" style="display:flex;align-items:center;gap:8px;">
+        <input type="checkbox" id="p-discountEnabled" style="width:auto;" ${p.discountEnabled!==false?'checked':''}>
+        <label for="p-discountEnabled" style="margin:0;">啟用這個優惠</label>
+      </div>
+      <div class="form-row">
+        <div class="field"><label>每滿幾小時觸發一次</label><input type="number" id="p-discountEveryHours" min="1" value="${p.discountEveryHours ?? 50}"></div>
+        <div class="field"><label>折扣％（10＝打9折，5＝打95折）</label><input type="number" id="p-discountPercent" min="0" max="100" value="${p.discountPercent ?? 10}"></div>
+      </div>
+      <div style="margin-top:6px;"><button class="btn btn-primary" id="saveDiscountBtn">儲存優惠設定</button></div>
+    </div>
   `;
 
   $('#saveContactBtn').addEventListener('click', async ()=>{
     p.email = $('#p-email').value.trim();
     p.lineUrl = $('#p-lineUrl').value.trim();
+    await saveProfile();
+    showToast('已儲存');
+  });
+  $('#saveDiscountBtn').addEventListener('click', async ()=>{
+    p.discountEnabled = $('#p-discountEnabled').checked;
+    p.discountEveryHours = $('#p-discountEveryHours').value ? Number($('#p-discountEveryHours').value) : 50;
+    p.discountPercent = $('#p-discountPercent').value !== '' ? Number($('#p-discountPercent').value) : 10;
     await saveProfile();
     showToast('已儲存');
   });
