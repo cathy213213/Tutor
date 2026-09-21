@@ -872,38 +872,58 @@ function combinedScheduledDatesInMonth(year, month){
 function specialClosuresForDate(dateKey){
   return ((state.profile && state.profile.specialClosures) || []).filter(c=>c.date===dateKey);
 }
+function minToClock(min){
+  if(min>=1440) return '24:00';
+  if(min<=0) return '00:00';
+  return formatTime(Math.floor(min/60), min%60);
+}
 function publicBusyEntriesForDate(dateKey){
   const dow = new Date(dateKey+'T00:00:00').getDay();
-  const entries = [];
+  const raw = [];
   state.schedules.forEach(sc=>{
     if(sc.date!==dateKey) return;
     const st = state.students.find(s=>s.id===sc.studentId);
     if(!st || st.excludeFromOverview) return;
-    entries.push({ start: sc.hour*60+sc.minute, label: formatTimeRange(sc.hour, sc.minute, sc.hours) });
+    const start = sc.hour*60+sc.minute;
+    raw.push({ start, end: start + Math.round((sc.hours||0)*60), type:'booking' });
   });
   const closures = specialClosuresForDate(dateKey);
   const onlyClosure = closures.find(c=>c.onlyMode);
   if(onlyClosure){
     const oStart = onlyClosure.startHour*60+onlyClosure.startMinute;
     const oEnd = onlyClosure.endHour*60+onlyClosure.endMinute;
-    if(oStart>0) entries.push({ start:-2, label: `00:00-${formatTime(onlyClosure.startHour,onlyClosure.startMinute)}（不可預約）` });
-    if(oEnd<24*60) entries.push({ start:oEnd, label: `${formatTime(onlyClosure.endHour,onlyClosure.endMinute)}-24:00（不可預約）` });
+    if(oStart>0) raw.push({ start:0, end:oStart, type:'restrict' });
+    if(oEnd<1440) raw.push({ start:oEnd, end:1440, type:'restrict' });
   } else {
-    const blocked = (state.profile && state.profile.blockedSlots) || [];
-    blocked.forEach(b=>{
+    ((state.profile && state.profile.blockedSlots) || []).forEach(b=>{
       if(b.dayOfWeek!==dow) return;
-      entries.push({ start: b.startHour*60+b.startMinute, label: `${formatTime(b.startHour,b.startMinute)}-${formatTime(b.endHour,b.endMinute)}` });
+      raw.push({ start: b.startHour*60+b.startMinute, end: b.endHour*60+b.endMinute, type:'closed' });
     });
     closures.forEach(c=>{
-      if(c.allDay){
-        entries.push({ start: -1, label: '全天公休' });
-      } else {
-        entries.push({ start: c.startHour*60+c.startMinute, label: `${formatTime(c.startHour,c.startMinute)}-${formatTime(c.endHour,c.endMinute)}（公休）` });
-      }
+      if(c.allDay) raw.push({ start:0, end:1440, type:'closed' });
+      else raw.push({ start: c.startHour*60+c.startMinute, end: c.endHour*60+c.endMinute, type:'closed' });
     });
   }
-  entries.sort((a,b)=> a.start-b.start);
-  return entries;
+  if(!raw.length) return [];
+  const sorted = raw.slice().sort((a,b)=> a.start-b.start);
+  const merged = [];
+  sorted.forEach(iv=>{
+    const last = merged[merged.length-1];
+    if(last && iv.start <= last.end){
+      last.end = Math.max(last.end, iv.end);
+      last.types.add(iv.type);
+    } else {
+      merged.push({ start: iv.start, end: iv.end, types: new Set([iv.type]) });
+    }
+  });
+  return merged.map(m=>{
+    const isAllDay = m.start<=0 && m.end>=1440;
+    let suffix = '';
+    if(m.types.has('restrict')) suffix = '（不可預約）';
+    else if(m.types.size===1 && m.types.has('closed')) suffix = '（公休）';
+    const label = isAllDay ? '全天公休' : `${minToClock(m.start)}-${minToClock(m.end)}${suffix}`;
+    return { start: m.start, label };
+  });
 }
 function publicBusyDatesInMonth(year, month){
   const map = new Map();
