@@ -935,6 +935,8 @@ function availableEntriesForDate(dateKey){
     const wStart = w.startHour*60+w.startMinute, wEnd = w.endHour*60+w.endMinute;
     free = free.concat(subtractIntervals(wStart, wEnd, occupied));
   });
+  const MIN_SLOT_MINUTES = 30;
+  free = free.filter(([s,e])=> (e-s) >= MIN_SLOT_MINUTES);
   free.sort((a,b)=> a[0]-b[0]);
   return free.map(([s,e])=> ({ start:s, label: `${formatTime(Math.floor(s/60), s%60)}-${formatTime(Math.floor(e/60), e%60)}` }));
 }
