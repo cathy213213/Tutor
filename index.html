@@ -377,7 +377,7 @@ function defaultAvailabilityWindows(){
   return [0,1,2,3,4,5,6].map(d=> ({ id: uid(), dayOfWeek:d, startHour:9, startMinute:0, endHour:21, endMinute:30 }));
 }
 function defaultProfile(){
-  return { name:'', photoUrl:'', education:'', experience:'', experiencePhotoUrl:'', educationList:[], teachingHistory:[], testimonials:[], classPhotos:[], appTagline: DEFAULT_APP_TAGLINE, aboutTagline: DEFAULT_ABOUT_TAGLINE, email:'', lineUrl:'', discountEnabled:true, discountEveryHours:50, discountPercent:10, blockedSlots: defaultBlockedSlots(), availabilityWindows: defaultAvailabilityWindows() };
+  return { name:'', photoUrl:'', education:'', experience:'', experiencePhotoUrl:'', educationList:[], teachingHistory:[], testimonials:[], classPhotos:[], appTagline: DEFAULT_APP_TAGLINE, aboutTagline: DEFAULT_ABOUT_TAGLINE, email:'', lineUrl:'', discountEnabled:true, discountEveryHours:50, discountPercent:10, blockedSlots: defaultBlockedSlots(), availabilityWindows: defaultAvailabilityWindows(), specialClosures: [] };
 }
 function moveArrayItem(arr, id, dir){
   const idx = arr.findIndex(x=>x.id===id);
@@ -484,6 +484,7 @@ async function loadData(){
     if(p.discountPercent===undefined){ p.discountPercent = 10; profileChanged = true; }
     if(p.blockedSlots===undefined){ p.blockedSlots = defaultBlockedSlots(); profileChanged = true; }
     if(p.availabilityWindows===undefined){ p.availabilityWindows = defaultAvailabilityWindows(); profileChanged = true; }
+    if(p.specialClosures===undefined){ p.specialClosures = []; profileChanged = true; }
     if(p.educationList===undefined){
       profileChanged = true;
       if(typeof p.education === 'string' && p.education.trim()){
@@ -868,6 +869,9 @@ function combinedScheduledDatesInMonth(year, month){
   return map;
 }
 /* ---------- public (anonymized) availability calendar ---------- */
+function specialClosuresForDate(dateKey){
+  return ((state.profile && state.profile.specialClosures) || []).filter(c=>c.date===dateKey);
+}
 function publicBusyEntriesForDate(dateKey){
   const dow = new Date(dateKey+'T00:00:00').getDay();
   const entries = [];
@@ -881,6 +885,13 @@ function publicBusyEntriesForDate(dateKey){
   blocked.forEach(b=>{
     if(b.dayOfWeek!==dow) return;
     entries.push({ start: b.startHour*60+b.startMinute, label: `${formatTime(b.startHour,b.startMinute)}-${formatTime(b.endHour,b.endMinute)}` });
+  });
+  specialClosuresForDate(dateKey).forEach(c=>{
+    if(c.allDay){
+      entries.push({ start: -1, label: '全天公休' });
+    } else {
+      entries.push({ start: c.startHour*60+c.startMinute, label: `${formatTime(c.startHour,c.startMinute)}-${formatTime(c.endHour,c.endMinute)}（公休）` });
+    }
   });
   entries.sort((a,b)=> a.start-b.start);
   return entries;
@@ -915,6 +926,8 @@ function subtractIntervals(baseStart, baseEnd, occupied){
   return free.filter(([s,e])=> e>s);
 }
 function availableEntriesForDate(dateKey){
+  const closures = specialClosuresForDate(dateKey);
+  if(closures.some(c=>c.allDay)) return [];
   const dow = new Date(dateKey+'T00:00:00').getDay();
   const windows = ((state.profile && state.profile.availabilityWindows) || []).filter(w=>w.dayOfWeek===dow);
   if(!windows.length) return [];
@@ -929,6 +942,9 @@ function availableEntriesForDate(dateKey){
   ((state.profile && state.profile.blockedSlots) || []).forEach(b=>{
     if(b.dayOfWeek!==dow) return;
     occupied.push([b.startHour*60+b.startMinute, b.endHour*60+b.endMinute]);
+  });
+  closures.forEach(c=>{
+    occupied.push([c.startHour*60+c.startMinute, c.endHour*60+c.endMinute]);
   });
   let free = [];
   windows.forEach(w=>{
@@ -1335,6 +1351,24 @@ function renderProfileEditor(){
         </div>`).join('') : `<div class="sched-empty">尚未設定</div>`}
       <div class="sched-add-row"><button id="addBlockedSlotBtn">＋ 新增封鎖時段</button></div>
     </div>
+
+    <div class="card">
+      <h3 class="section-title">📅 特殊公休日期</h3>
+      <p style="font-size:12px;color:var(--ink-soft);margin:0 0 12px;">給不固定、單次的日子用（例如請假、特殊活動），不會影響其他日期。</p>
+      ${(p.specialClosures && p.specialClosures.length) ? p.specialClosures.slice().sort((a,b)=>a.date.localeCompare(b.date)).map(c=>{
+        const [cy,cm,cd] = c.date.split('-');
+        const cdow = new Date(c.date+'T00:00:00').getDay();
+        const label = c.allDay ? '整天公休' : `${formatTime(c.startHour,c.startMinute)}-${formatTime(c.endHour,c.endMinute)}`;
+        return `<div class="sched-item">
+          <span class="sched-when">${Number(cm)}/${Number(cd)}（${dayNames[cdow]}）　${label}</span>
+          <span style="display:flex;gap:12px">
+            <button data-edit-closure="${c.id}">編輯</button>
+            <button data-del-closure="${c.id}" style="color:var(--red)">刪除</button>
+          </span>
+        </div>`;
+      }).join('') : `<div class="sched-empty">尚未設定</div>`}
+      <div class="sched-add-row"><button id="addSpecialClosureBtn">＋ 新增特殊公休日期</button></div>
+    </div>
   `;
 
   $('#saveContactBtn').addEventListener('click', async ()=>{
@@ -1364,6 +1398,15 @@ function renderProfileEditor(){
   area.querySelectorAll('[data-del-block]').forEach(btn=>{
     btn.addEventListener('click', async ()=>{
       p.blockedSlots = (p.blockedSlots||[]).filter(b=>b.id!==btn.dataset.delBlock);
+      await saveProfile();
+      render();
+    });
+  });
+  $('#addSpecialClosureBtn').addEventListener('click', addSpecialClosure);
+  area.querySelectorAll('[data-edit-closure]').forEach(btn=> btn.addEventListener('click', ()=> editSpecialClosure(btn.dataset.editClosure)));
+  area.querySelectorAll('[data-del-closure]').forEach(btn=>{
+    btn.addEventListener('click', async ()=>{
+      p.specialClosures = (p.specialClosures||[]).filter(c=>c.id!==btn.dataset.delClosure);
       await saveProfile();
       render();
     });
@@ -2488,6 +2531,63 @@ function addAvailWindow(){ availWindowModal(null); }
 function editAvailWindow(id){
   const existing = (state.profile.availabilityWindows||[]).find(x=>x.id===id);
   if(existing) availWindowModal(existing);
+}
+function specialClosureModal(existing){
+  const c = existing || { date: toKey(new Date()), allDay:true, startHour:9, startMinute:0, endHour:21, endMinute:30 };
+  showModal(`
+    <h3>${existing?'編輯':'新增'}特殊公休日期</h3>
+    <div class="field"><label>日期</label><input type="date" id="m-date" value="${c.date}"></div>
+    <div class="field" style="display:flex;align-items:center;gap:8px;">
+      <input type="checkbox" id="m-allday" style="width:auto;" ${c.allDay?'checked':''}>
+      <label for="m-allday" style="margin:0;">整天公休</label>
+    </div>
+    <div id="m-time-wrap" style="${c.allDay?'display:none;':''}">
+      <div class="form-row">
+        <div class="field"><label>開始時</label><select id="m-startHour">${hourOptions(c.startHour)}</select></div>
+        <div class="field"><label>開始分</label><select id="m-startMin">${minuteOptions(c.startMinute)}</select></div>
+      </div>
+      <div class="form-row">
+        <div class="field"><label>結束時</label><select id="m-endHour">${hourOptions(c.endHour)}</select></div>
+        <div class="field"><label>結束分</label><select id="m-endMin">${minuteOptions(c.endMinute)}</select></div>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" id="m-cancel">取消</button>
+      <button class="btn btn-primary" id="m-save">${existing?'儲存':'新增'}</button>
+    </div>
+  `);
+  $('#m-allday').addEventListener('change', ()=>{
+    $('#m-time-wrap').style.display = $('#m-allday').checked ? 'none' : '';
+  });
+  $('#m-cancel').addEventListener('click', closeModal);
+  $('#m-save').addEventListener('click', async ()=>{
+    const date = $('#m-date').value;
+    if(!date) return;
+    const allDay = $('#m-allday').checked;
+    const data = {
+      id: existing ? existing.id : uid(),
+      date, allDay,
+      startHour: allDay ? 0 : Number($('#m-startHour').value),
+      startMinute: allDay ? 0 : Number($('#m-startMin').value),
+      endHour: allDay ? 23 : Number($('#m-endHour').value),
+      endMinute: allDay ? 59 : Number($('#m-endMin').value)
+    };
+    state.profile.specialClosures = state.profile.specialClosures || [];
+    if(existing){
+      const idx = state.profile.specialClosures.findIndex(x=>x.id===existing.id);
+      state.profile.specialClosures[idx] = data;
+    } else {
+      state.profile.specialClosures.push(data);
+    }
+    closeModal();
+    await saveProfile();
+    render();
+  });
+}
+function addSpecialClosure(){ specialClosureModal(null); }
+function editSpecialClosure(id){
+  const existing = (state.profile.specialClosures||[]).find(x=>x.id===id);
+  if(existing) specialClosureModal(existing);
 }
 function editExamItem(id){
   const existing = state.examDates.find(x=>x.id===id);
