@@ -2776,6 +2776,22 @@ function renderMain(){
     </div>
 
     <div class="card">
+      <div class="cal-head">
+        <div class="cal-nav"><button id="prevMonth">‹</button></div>
+        <h2 id="monthLabel">${state.cursor.getFullYear()} 年 ${state.cursor.getMonth()+1} 月</h2>
+        <div class="cal-nav"><button id="nextMonth">›</button></div>
+      </div>
+      <div class="grid7" id="dowRow">${dowNames.map(d=>`<div class="dow">${d}</div>`).join('')}</div>
+      <div class="grid7" id="calGrid"></div>
+      <div class="legend">
+        <span><i style="background:var(--red)"></i>已記錄上課內容</span>
+        <span><i style="background:var(--teal)"></i>已排定尚未記錄</span>
+        <span><i style="background:transparent;border:1px solid var(--red)"></i>今天</span>
+        <span><i style="background:${EXAM_COLOR}"></i>考試日期（期中／期末／模擬考）</span>
+      </div>
+    </div>
+
+    <div class="card">
       <h3 class="section-title">${state.cursor.getMonth()+1} 月排定時段</h3>
       ${monthSched.length ? monthSched.map(sc=>{
         const dow = new Date(sc.date+'T00:00:00').getDay();
@@ -2824,22 +2840,6 @@ function renderMain(){
         <div class="sched-add-row">
           <button id="addExamBtn">＋ 新增考試日期</button>
         </div>` : ''}
-    </div>
-
-    <div class="card">
-      <div class="cal-head">
-        <div class="cal-nav"><button id="prevMonth">‹</button></div>
-        <h2 id="monthLabel">${state.cursor.getFullYear()} 年 ${state.cursor.getMonth()+1} 月</h2>
-        <div class="cal-nav"><button id="nextMonth">›</button></div>
-      </div>
-      <div class="grid7" id="dowRow">${dowNames.map(d=>`<div class="dow">${d}</div>`).join('')}</div>
-      <div class="grid7" id="calGrid"></div>
-      <div class="legend">
-        <span><i style="background:var(--red)"></i>已記錄上課內容</span>
-        <span><i style="background:var(--teal)"></i>已排定尚未記錄</span>
-        <span><i style="background:transparent;border:1px solid var(--red)"></i>今天</span>
-        <span><i style="background:${EXAM_COLOR}"></i>考試日期（期中／期末／模擬考）</span>
-      </div>
     </div>
 
     ${state.viewMode==='parent' ? `<div class="card"><div class="parent-note">目前為家長檢視模式，僅顯示上課時間與紀錄，無法新增或修改。</div></div>` : ''}
