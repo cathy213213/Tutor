@@ -299,7 +299,6 @@ let state = {
   showProfileEdit: false,
   lockedProfile: false,
   lockedCalendar: false,
-  publicCalMode: 'busy',
   isPreview: false,
   profile: null,
   viewCounts: {},
@@ -1002,14 +1001,12 @@ function availableDatesInMonth(year, month){
 }
 function renderPublicCalendarCard(){
   const y = state.cursor.getFullYear(), m = state.cursor.getMonth();
-  const mode = state.publicCalMode || 'busy';
-  const dataMap = mode==='available' ? availableDatesInMonth(y, m) : publicBusyDatesInMonth(y, m);
+  const dataMap = availableDatesInMonth(y, m);
   const firstDow = new Date(y, m, 1).getDay();
   const daysInMonth = new Date(y, m+1, 0).getDate();
   const MAX_BLOCKS = 4;
   const atStart = (y*12+m) <= (CHART_START_YEAR*12+CHART_START_MONTH);
-  const blockColor = mode==='available' ? 'var(--teal)' : 'var(--red)';
-  const toggleColor = mode==='available' ? 'var(--red)' : 'var(--teal)';
+  const blockColor = 'var(--teal)';
   let calHtml = '';
   for(let i=0;i<firstDow;i++) calHtml += `<div class="pub-day pad"></div>`;
   for(let d=1; d<=daysInMonth; d++){
@@ -1032,9 +1029,8 @@ function renderPublicCalendarCard(){
   return `
     <div class="card">
       <h3 class="section-title">🔒 公開行事曆－剩餘可預約時段</h3>
-      <p style="font-size:12px;color:var(--ink-soft);margin:0 0 12px;">${mode==='available' ? '綠色色塊代表尚可預約時段，' : '紅色色塊代表已預約，'}點日期可以看確切時段，僅供參考，實際時段請與老師確認。</p>
+      <p style="font-size:12px;color:var(--ink-soft);margin:0 0 12px;">綠色色塊代表尚可預約時段，點日期可以看確切時段，僅供參考，實際時段請與老師確認。</p>
       <p style="font-size:12px;color:var(--teal);font-weight:600;background:var(--teal-soft);padding:8px 12px;border-radius:8px;margin:0 0 14px;">🌤️ 平日白天時段享優惠價，歡迎聯繫老師洽詢</p>
-      <button class="btn btn-primary" id="pubCalModeToggle" style="width:100%;margin-bottom:14px;background:${toggleColor};border-color:${toggleColor};">${mode==='available' ? '← 顯示已預約時段' : '📆 本月尚可預約時段'}</button>
       <div class="cal-head">
         <div class="cal-nav"><button id="pubCalPrev" ${atStart?'disabled style="opacity:0.3;"':''}>‹</button></div>
         <h2>${y} 年 ${m+1} 月</h2>
@@ -1042,28 +1038,20 @@ function renderPublicCalendarCard(){
       </div>
       <div class="grid7">${dowNames.map(d=>`<div class="dow">${d}</div>`).join('')}</div>
       <div class="grid7" id="pubCalGrid">${calHtml}</div>
-      <div class="legend"><span><i style="background:${blockColor}"></i>${mode==='available' ? '尚可預約' : '已預約'}</span></div>
+      <div class="legend"><span><i style="background:${blockColor}"></i>尚可預約</span></div>
     </div>
   `;
 }
 function bindPublicCalendarEvents(){
-  const modeBtn = document.getElementById('pubCalModeToggle');
-  if(modeBtn){
-    modeBtn.addEventListener('click', ()=>{
-      state.publicCalMode = (state.publicCalMode==='available') ? 'busy' : 'available';
-      render();
-    });
-  }
   document.querySelectorAll('[data-pubdate]').forEach(el=>{
     el.addEventListener('click', ()=>{
       const key = el.dataset.pubdate;
-      const mode = state.publicCalMode || 'busy';
-      const entries = mode==='available' ? availableEntriesForDate(key) : publicBusyEntriesForDate(key);
+      const entries = availableEntriesForDate(key);
       if(!entries.length) return;
       const [yy,mm,dd] = key.split('-');
       const dow = new Date(key+'T00:00:00').getDay();
       showModal(`
-        <h3>${Number(mm)}/${Number(dd)}（${dayNames[dow]}）${mode==='available' ? '尚可預約時段' : '已預約時段'}</h3>
+        <h3>${Number(mm)}/${Number(dd)}（${dayNames[dow]}）尚可預約時段</h3>
         ${entries.map(e=>`<div class="sched-item"><span class="sched-when">${e.label}</span></div>`).join('')}
         <div class="modal-actions"><button class="btn btn-primary" id="m-close">關閉</button></div>
       `);
