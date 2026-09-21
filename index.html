@@ -129,7 +129,10 @@
   .pub-day{border-radius:8px;border:1px solid transparent;padding:4px 3px;min-height:56px;display:flex;flex-direction:column;align-items:flex-start;overflow:hidden;cursor:default;}
   .pub-day.has-busy{cursor:pointer;}
   .pub-day.today{border-color:var(--red);}
+  .pub-day.past{background:var(--paper);}
   .pub-day .pub-num{font-size:11px;font-weight:700;color:var(--ink);margin-bottom:3px;}
+  .pub-day.past .pub-num{color:var(--ink-soft);}
+  .pub-past-label{font-size:9px;color:var(--ink-soft);}
   .pub-blocks{display:flex;flex-direction:column;gap:2px;width:100%;align-items:flex-start;}
   .pub-block{width:85%;height:6px;border-radius:3px;background:var(--red);}
   .pub-entry{font-size:9px;line-height:1.35;color:var(--teal);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;width:100%;display:block;}
@@ -1013,8 +1016,16 @@ function renderPublicCalendarCard(){
   for(let i=0;i<firstDow;i++) calHtml += `<div class="pub-day pad"></div>`;
   for(let d=1; d<=daysInMonth; d++){
     const key = toKey(new Date(y, m, d));
-    const entries = dataMap.get(key) || [];
     const isToday = key===todayKey();
+    const isPast = key < todayKey();
+    if(isPast){
+      calHtml += `<div class="pub-day past">
+        <span class="pub-num">${d}</span>
+        <div class="pub-blocks"><span class="pub-past-label">已截止</span></div>
+      </div>`;
+      continue;
+    }
+    const entries = dataMap.get(key) || [];
     const classes = ['pub-day'];
     if(isToday) classes.push('today');
     if(entries.length) classes.push('has-busy');
