@@ -897,11 +897,11 @@ function publicBusyEntriesForDate(dateKey){
   } else {
     ((state.profile && state.profile.blockedSlots) || []).forEach(b=>{
       if(b.dayOfWeek!==dow) return;
-      raw.push({ start: b.startHour*60+b.startMinute, end: b.endHour*60+b.endMinute, type:'closed' });
+      raw.push({ start: b.startHour*60+b.startMinute, end: b.endHour*60+b.endMinute, type:'blocked' });
     });
     closures.forEach(c=>{
-      if(c.allDay) raw.push({ start:0, end:1440, type:'closed' });
-      else raw.push({ start: c.startHour*60+c.startMinute, end: c.endHour*60+c.endMinute, type:'closed' });
+      if(c.allDay) raw.push({ start:0, end:1440, type:'closure' });
+      else raw.push({ start: c.startHour*60+c.startMinute, end: c.endHour*60+c.endMinute, type:'closure' });
     });
   }
   if(!raw.length) return [];
@@ -920,7 +920,7 @@ function publicBusyEntriesForDate(dateKey){
     const isAllDay = m.start<=0 && m.end>=1440;
     let suffix = '';
     if(m.types.has('restrict')) suffix = '（不可預約）';
-    else if(m.types.size===1 && m.types.has('closed')) suffix = '（公休）';
+    else if(m.types.size===1 && m.types.has('closure')) suffix = '（公休）';
     const label = isAllDay ? '全天公休' : `${minToClock(m.start)}-${minToClock(m.end)}${suffix}`;
     return { start: m.start, label };
   });
