@@ -3488,7 +3488,7 @@ function showPasswordGate(){
 
 function boot(){
   applyRouteFromHash();
-  const isPublicRoute = state.lockedParent || state.lockedStudent || state.lockedProfile;
+  const isPublicRoute = state.lockedParent || state.lockedStudent || state.lockedProfile || state.lockedCalendar;
   if(isPublicRoute || isTeacherUnlocked()){
     loadData();
   } else {
