@@ -1165,6 +1165,7 @@ function renderStudentView(){
         return `<div class="sched-item"><span class="sched-when"><span class="exam-badge" style="background:${EXAM_COLOR}"></span>${info.label}　${examRangeLabel(ex)}</span></div>`;
       }).join('')}
     </div>` : ''}
+    ${siteFooterHtml()}
   `;
 
   $('#stuPrev').addEventListener('click', ()=>{ state.cursor = new Date(y, m-1, 1); renderStudentView(); });
@@ -1236,9 +1237,9 @@ function renderProfileEditor(){
       <div class="field"><label>姓名</label><input type="text" id="p-name" value="${escapeHtml(p.name||'')}"></div>
       <div class="field"><label>App 內鼓勵語（老師／家長／學生畫面都會看到）</label><textarea id="p-appTagline" placeholder="例如：希望孩子的數學能夠越來越穩定進步💪🏻讓我們一起努力吧🌷">${p.appTagline||''}</textarea></div>
       <div class="field"><label>介紹頁副標語（只有公開介紹頁會顯示）</label><textarea id="p-aboutTagline" placeholder="例如：10年以上高中數學教學經驗｜合格教師證｜雙碩士">${p.aboutTagline||''}</textarea></div>
-      <div class="field"><label>經歷</label><textarea id="p-experience" placeholder="例如：曾任OO補習班數學教師">${p.experience||''}</textarea></div>
+      <div class="field"><label>教師證照</label><textarea id="p-experience" placeholder="例如：持有高中數學科合格教師證">${p.experience||''}</textarea></div>
       <div class="field">
-        <label>經歷證明照片（選填）</label>
+        <label>證照照片（選填）</label>
         ${p.experiencePhotoUrl ? `<div style="margin-bottom:8px;display:flex;align-items:center;gap:10px;">
           <img src="${p.experiencePhotoUrl}" class="no-save lightbox-img" data-src="${p.experiencePhotoUrl}" draggable="false" oncontextmenu="return false;" style="width:64px;height:64px;border-radius:8px;object-fit:cover;cursor:zoom-in;">
           <button class="add-trigger" id="removeExpPhotoBtn" style="color:var(--red)">移除照片</button>
@@ -1294,6 +1295,22 @@ function renderProfileEditor(){
     </div>
 
     <div class="card">
+      <h3 class="section-title">教學特色</h3>
+      ${p.classPhotos.length ? p.classPhotos.map(t=>`
+        <div class="sched-item" style="align-items:flex-start;">
+          <span class="sched-when" style="display:flex;gap:10px;white-space:normal;">
+            ${t.photoUrl ? `<img src="${t.photoUrl}" class="no-save lightbox-img" data-src="${t.photoUrl}" draggable="false" oncontextmenu="return false;" style="width:40px;height:40px;border-radius:8px;object-fit:cover;flex-shrink:0;cursor:zoom-in;">` : ''}
+            <span>${escapeHtml(t.text)}</span>
+          </span>
+          <span style="display:flex;gap:12px;flex-shrink:0;">
+            <button data-edit-photo="${t.id}">編輯</button>
+            <button data-del-photo="${t.id}" style="color:var(--red)">刪除</button>
+          </span>
+        </div>`).join('') : `<div class="sched-empty">尚未新增教學特色</div>`}
+      <div class="sched-add-row"><button id="addClassPhotoBtn">＋ 新增教學特色</button></div>
+    </div>
+
+    <div class="card">
       <h3 class="section-title">家長及學生回饋</h3>
       ${p.testimonials.length ? p.testimonials.map(t=>`
         <div class="sched-item" style="align-items:flex-start;">
@@ -1307,22 +1324,6 @@ function renderProfileEditor(){
           </span>
         </div>`).join('') : `<div class="sched-empty">尚未新增回饋</div>`}
       <div class="sched-add-row"><button id="addTestiBtn">＋ 新增一則回饋</button></div>
-    </div>
-
-    <div class="card">
-      <h3 class="section-title">上課畫面分享</h3>
-      ${p.classPhotos.length ? p.classPhotos.map(t=>`
-        <div class="sched-item" style="align-items:flex-start;">
-          <span class="sched-when" style="display:flex;gap:10px;white-space:normal;">
-            ${t.photoUrl ? `<img src="${t.photoUrl}" class="no-save lightbox-img" data-src="${t.photoUrl}" draggable="false" oncontextmenu="return false;" style="width:40px;height:40px;border-radius:8px;object-fit:cover;flex-shrink:0;cursor:zoom-in;">` : ''}
-            <span>${escapeHtml(t.text)}</span>
-          </span>
-          <span style="display:flex;gap:12px;flex-shrink:0;">
-            <button data-edit-photo="${t.id}">編輯</button>
-            <button data-del-photo="${t.id}" style="color:var(--red)">刪除</button>
-          </span>
-        </div>`).join('') : `<div class="sched-empty">尚未分享上課畫面</div>`}
-      <div class="sched-add-row"><button id="addClassPhotoBtn">＋ 新增上課畫面</button></div>
     </div>
 
     <div class="card">
@@ -1940,19 +1941,19 @@ function renderProfilePage(){
           <span>${eduLine(e)}</span>
         </span>
       </div>`).join('')}</div>` : ''}
-    ${(p.experience || p.experiencePhotoUrl) ? `<div class="card"><h3 class="section-title">經歷</h3>
+    ${(p.experience || p.experiencePhotoUrl) ? `<div class="card"><h3 class="section-title">教師證照</h3>
       ${p.experience ? `<div style="font-size:14px;line-height:1.8;white-space:pre-wrap;">${escapeHtml(p.experience)}</div>` : ''}
       ${p.experiencePhotoUrl ? `<div style="margin-top:10px;"><img src="${p.experiencePhotoUrl}" class="no-save lightbox-img" data-src="${p.experiencePhotoUrl}" draggable="false" oncontextmenu="return false;" style="width:96px;height:96px;border-radius:8px;object-fit:cover;cursor:zoom-in;"></div>` : ''}
     </div>` : ''}
     ${(p.teachingHistory && p.teachingHistory.length) ? `<div class="card"><h3 class="section-title">教學經歷</h3>${p.teachingHistory.map(t=>`<div class="sched-item"><span class="sched-when">${teachLine(t)}</span></div>`).join('')}</div>` : ''}
-    ${(p.testimonials && p.testimonials.length) ? `<div class="card"><h3 class="section-title">家長及學生回饋</h3>${p.testimonials.map(t=>`
+    ${(p.classPhotos && p.classPhotos.length) ? `<div class="card"><h3 class="section-title">教學特色</h3>${p.classPhotos.map(t=>`
       <div class="sched-item" style="align-items:flex-start;">
         <span class="sched-when" style="display:flex;gap:10px;white-space:pre-wrap;">
           ${t.photoUrl ? `<img src="${t.photoUrl}" class="no-save lightbox-img" data-src="${t.photoUrl}" draggable="false" oncontextmenu="return false;" style="width:48px;height:48px;border-radius:8px;object-fit:cover;flex-shrink:0;cursor:zoom-in;">` : ''}
           <span>${escapeHtml(t.text)}</span>
         </span>
       </div>`).join('')}</div>` : ''}
-    ${(p.classPhotos && p.classPhotos.length) ? `<div class="card"><h3 class="section-title">上課畫面分享</h3>${p.classPhotos.map(t=>`
+    ${(p.testimonials && p.testimonials.length) ? `<div class="card"><h3 class="section-title">家長及學生回饋</h3>${p.testimonials.map(t=>`
       <div class="sched-item" style="align-items:flex-start;">
         <span class="sched-when" style="display:flex;gap:10px;white-space:pre-wrap;">
           ${t.photoUrl ? `<img src="${t.photoUrl}" class="no-save lightbox-img" data-src="${t.photoUrl}" draggable="false" oncontextmenu="return false;" style="width:48px;height:48px;border-radius:8px;object-fit:cover;flex-shrink:0;cursor:zoom-in;">` : ''}
@@ -1964,6 +1965,7 @@ function renderProfilePage(){
       ${p.lineUrl ? `<div class="sched-item"><span class="sched-when">💬 LINE</span><a href="${escapeHtml(p.lineUrl)}" target="_blank" rel="noopener" style="color:var(--teal);font-weight:600;">加入LINE好友</a></div>` : ''}
     </div>` : ''}
     ${renderPublicCalendarCard()}
+    ${siteFooterHtml()}
   `;
   bindLightboxImages(area);
   bindPublicCalendarEvents();
@@ -2852,6 +2854,7 @@ function renderMain(){
         <div style="font-size:14px;line-height:1.8;">${summaryText.trim() ? escapeHtml(summaryText).replace(/\n/g,'<br>') : '<span style="color:var(--ink-soft)">老師尚未填寫本月摘要</span>'}</div>
       `}
     </div>
+    ${state.viewMode==='parent' ? siteFooterHtml() : ''}
   `;
 
   if(state.viewMode==='teacher'){
@@ -3058,6 +3061,9 @@ function aboutLinkBanner(){
   return `<div class="card" style="text-align:center;">
     <a href="${href}" target="_blank" rel="noopener" style="color:var(--teal);font-size:13px;font-weight:600;text-decoration:underline;">👩🏻‍🏫 關於柏萱老師</a>
   </div>`;
+}
+function siteFooterHtml(){
+  return `<div style="text-align:center;font-size:11px;color:var(--ink-soft);padding:22px 0 6px;">© ${new Date().getFullYear()} 柏萱老師數學教室 · Prepared by 李柏萱</div>`;
 }
 
 function getBaseUrl(){
