@@ -126,6 +126,13 @@
   .ov-day.today{border-color:var(--red);}
   .ov-day .ov-num{font-size:11px;font-weight:700;color:var(--ink);margin-bottom:2px;}
   .ov-day .ov-entry{font-size:9.5px;line-height:1.35;color:var(--teal);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;width:100%;}
+  .pub-day{border-radius:8px;border:1px solid transparent;padding:4px 3px;min-height:56px;display:flex;flex-direction:column;align-items:flex-start;overflow:hidden;cursor:default;}
+  .pub-day.has-busy{cursor:pointer;}
+  .pub-day.today{border-color:var(--red);}
+  .pub-day .pub-num{font-size:11px;font-weight:700;color:var(--ink);margin-bottom:3px;}
+  .pub-blocks{display:flex;flex-direction:column;gap:2px;width:100%;align-items:flex-start;}
+  .pub-block{width:85%;height:6px;border-radius:3px;background:var(--red);}
+  .pub-more{font-size:9px;color:var(--ink-soft);margin-top:1px;}
   .day.clickable{cursor:pointer;}
   .day.clickable:hover{background:var(--paper);}
 
@@ -351,8 +358,16 @@ const EXAM_TYPES = {
 };
 const DEFAULT_APP_TAGLINE = '希望孩子的數學能夠越來越穩定進步💪🏻讓我們一起努力吧🌷';
 const DEFAULT_ABOUT_TAGLINE = '10年以上高中數學教學經驗｜合格教師證｜雙碩士｜線上高中數學教師🧮';
+function defaultBlockedSlots(){
+  return [
+    { id: uid(), dayOfWeek:6, startHour:14, startMinute:0, endHour:17, endMinute:0 },
+    { id: uid(), dayOfWeek:6, startHour:19, startMinute:0, endHour:21, endMinute:0 },
+    { id: uid(), dayOfWeek:0, startHour:14, startMinute:0, endHour:17, endMinute:0 },
+    { id: uid(), dayOfWeek:0, startHour:19, startMinute:0, endHour:21, endMinute:0 }
+  ];
+}
 function defaultProfile(){
-  return { name:'', photoUrl:'', education:'', experience:'', experiencePhotoUrl:'', educationList:[], teachingHistory:[], testimonials:[], classPhotos:[], appTagline: DEFAULT_APP_TAGLINE, aboutTagline: DEFAULT_ABOUT_TAGLINE, email:'', lineUrl:'', discountEnabled:true, discountEveryHours:50, discountPercent:10 };
+  return { name:'', photoUrl:'', education:'', experience:'', experiencePhotoUrl:'', educationList:[], teachingHistory:[], testimonials:[], classPhotos:[], appTagline: DEFAULT_APP_TAGLINE, aboutTagline: DEFAULT_ABOUT_TAGLINE, email:'', lineUrl:'', discountEnabled:true, discountEveryHours:50, discountPercent:10, blockedSlots: defaultBlockedSlots() };
 }
 function moveArrayItem(arr, id, dir){
   const idx = arr.findIndex(x=>x.id===id);
@@ -457,6 +472,7 @@ async function loadData(){
     if(p.discountEnabled===undefined){ p.discountEnabled = true; profileChanged = true; }
     if(p.discountEveryHours===undefined){ p.discountEveryHours = 50; profileChanged = true; }
     if(p.discountPercent===undefined){ p.discountPercent = 10; profileChanged = true; }
+    if(p.blockedSlots===undefined){ p.blockedSlots = defaultBlockedSlots(); profileChanged = true; }
     if(p.educationList===undefined){
       profileChanged = true;
       if(typeof p.education === 'string' && p.education.trim()){
@@ -839,6 +855,92 @@ function combinedScheduledDatesInMonth(year, month){
   state.schedules.forEach(s=>{ if(s.date.startsWith(prefix)) map.set(s.date, (map.get(s.date)||0)+1); });
   return map;
 }
+/* ---------- public (anonymized) availability calendar ---------- */
+function publicBusyEntriesForDate(dateKey){
+  const dow = new Date(dateKey+'T00:00:00').getDay();
+  const entries = [];
+  state.schedules.forEach(sc=>{
+    if(sc.date!==dateKey) return;
+    const st = state.students.find(s=>s.id===sc.studentId);
+    if(!st || st.excludeFromOverview) return;
+    entries.push({ start: sc.hour*60+sc.minute, label: formatTimeRange(sc.hour, sc.minute, sc.hours) });
+  });
+  const blocked = (state.profile && state.profile.blockedSlots) || [];
+  blocked.forEach(b=>{
+    if(b.dayOfWeek!==dow) return;
+    entries.push({ start: b.startHour*60+b.startMinute, label: `${formatTime(b.startHour,b.startMinute)}-${formatTime(b.endHour,b.endMinute)}` });
+  });
+  entries.sort((a,b)=> a.start-b.start);
+  return entries;
+}
+function publicBusyDatesInMonth(year, month){
+  const map = new Map();
+  const daysInMonth = new Date(year, month+1, 0).getDate();
+  for(let d=1; d<=daysInMonth; d++){
+    const key = toKey(new Date(year, month, d));
+    const entries = publicBusyEntriesForDate(key);
+    if(entries.length) map.set(key, entries);
+  }
+  return map;
+}
+function renderPublicCalendarCard(){
+  const y = state.cursor.getFullYear(), m = state.cursor.getMonth();
+  const busyMap = publicBusyDatesInMonth(y, m);
+  const firstDow = new Date(y, m, 1).getDay();
+  const daysInMonth = new Date(y, m+1, 0).getDate();
+  const MAX_BLOCKS = 4;
+  let calHtml = '';
+  for(let i=0;i<firstDow;i++) calHtml += `<div class="pub-day pad"></div>`;
+  for(let d=1; d<=daysInMonth; d++){
+    const key = toKey(new Date(y, m, d));
+    const entries = busyMap.get(key) || [];
+    const isToday = key===todayKey();
+    const classes = ['pub-day'];
+    if(isToday) classes.push('today');
+    if(entries.length) classes.push('has-busy');
+    const shown = entries.slice(0, MAX_BLOCKS);
+    const extra = entries.length - shown.length;
+    calHtml += `<div class="${classes.join(' ')}" data-pubdate="${key}">
+      <span class="pub-num">${d}</span>
+      <div class="pub-blocks">
+        ${shown.map(()=>`<span class="pub-block"></span>`).join('')}
+        ${extra>0 ? `<span class="pub-more">+${extra}</span>` : ''}
+      </div>
+    </div>`;
+  }
+  return `
+    <div class="card">
+      <h3 class="section-title">🔒 公開行事曆－剩餘可預約時段</h3>
+      <p style="font-size:12px;color:var(--ink-soft);margin:0 0 12px;">紅色色塊代表已預約，點日期可以看確切時段，僅供參考，實際時段請與老師確認。</p>
+      <p style="font-size:12px;color:var(--teal);font-weight:600;background:var(--teal-soft);padding:8px 12px;border-radius:8px;margin:0 0 14px;">🌤️ 平日白天時段享優惠價，歡迎聯繫老師洽詢</p>
+      <div class="cal-head">
+        <div class="cal-nav"><button id="pubCalPrev">‹</button></div>
+        <h2>${y} 年 ${m+1} 月</h2>
+        <div class="cal-nav"><button id="pubCalNext">›</button></div>
+      </div>
+      <div class="grid7">${dowNames.map(d=>`<div class="dow">${d}</div>`).join('')}</div>
+      <div class="grid7" id="pubCalGrid">${calHtml}</div>
+      <div class="legend"><span><i style="background:var(--red)"></i>已預約</span></div>
+    </div>
+  `;
+}
+function bindPublicCalendarEvents(){
+  document.querySelectorAll('[data-pubdate]').forEach(el=>{
+    el.addEventListener('click', ()=>{
+      const key = el.dataset.pubdate;
+      const entries = publicBusyEntriesForDate(key);
+      if(!entries.length) return;
+      const [yy,mm,dd] = key.split('-');
+      const dow = new Date(key+'T00:00:00').getDay();
+      showModal(`
+        <h3>${Number(mm)}/${Number(dd)}（${dayNames[dow]}）已預約時段</h3>
+        ${entries.map(e=>`<div class="sched-item"><span class="sched-when">${e.label}</span></div>`).join('')}
+        <div class="modal-actions"><button class="btn btn-primary" id="m-close">關閉</button></div>
+      `);
+      $('#m-close').addEventListener('click', closeModal);
+    });
+  });
+}
 
 /* ---------- student-facing view (next class + homework only, no money) ---------- */
 function nextOccurrenceFor(sid){
@@ -1116,6 +1218,17 @@ function renderProfileEditor(){
       </div>
       <div style="margin-top:6px;"><button class="btn btn-primary" id="saveDiscountBtn">儲存優惠設定</button></div>
     </div>
+
+    <div class="card">
+      <h3 class="section-title">🔒 公開行事曆－固定不可預約時段</h3>
+      <p style="font-size:12px;color:var(--ink-soft);margin:0 0 12px;">這些時段會在「老師介紹頁」最下方的公開行事曆自動標示已預約，不管有沒有排學生，適合用來預留私人時間。</p>
+      ${(p.blockedSlots && p.blockedSlots.length) ? p.blockedSlots.map(b=>`
+        <div class="sched-item">
+          <span class="sched-when">每週${dayNames[b.dayOfWeek]}　${formatTime(b.startHour,b.startMinute)}-${formatTime(b.endHour,b.endMinute)}</span>
+          <button data-del-block="${b.id}" style="color:var(--red)">刪除</button>
+        </div>`).join('') : `<div class="sched-empty">尚未設定</div>`}
+      <div class="sched-add-row"><button id="addBlockedSlotBtn">＋ 新增封鎖時段</button></div>
+    </div>
   `;
 
   $('#saveContactBtn').addEventListener('click', async ()=>{
@@ -1130,6 +1243,14 @@ function renderProfileEditor(){
     p.discountPercent = $('#p-discountPercent').value !== '' ? Number($('#p-discountPercent').value) : 10;
     await saveProfile();
     showToast('已儲存');
+  });
+  $('#addBlockedSlotBtn').addEventListener('click', addBlockedSlot);
+  area.querySelectorAll('[data-del-block]').forEach(btn=>{
+    btn.addEventListener('click', async ()=>{
+      p.blockedSlots = (p.blockedSlots||[]).filter(b=>b.id!==btn.dataset.delBlock);
+      await saveProfile();
+      render();
+    });
   });
   $('#uploadPhotoBtn').addEventListener('click', ()=> $('#photoFile').click());
   $('#photoFile').addEventListener('change', handleProfilePhotoUpload);
@@ -1610,8 +1731,12 @@ function renderProfilePage(){
       ${p.email ? `<div class="sched-item"><span class="sched-when">✉️ Email</span><a href="mailto:${escapeHtml(p.email)}" style="color:var(--teal);font-weight:600;">${escapeHtml(p.email)}</a></div>` : ''}
       ${p.lineUrl ? `<div class="sched-item"><span class="sched-when">💬 LINE</span><a href="${escapeHtml(p.lineUrl)}" target="_blank" rel="noopener" style="color:var(--teal);font-weight:600;">加入LINE好友</a></div>` : ''}
     </div>` : ''}
+    ${renderPublicCalendarCard()}
   `;
   bindLightboxImages(area);
+  bindPublicCalendarEvents();
+  $('#pubCalPrev').addEventListener('click', ()=>{ state.cursor = new Date(state.cursor.getFullYear(), state.cursor.getMonth()-1, 1); render(); });
+  $('#pubCalNext').addEventListener('click', ()=>{ state.cursor = new Date(state.cursor.getFullYear(), state.cursor.getMonth()+1, 1); render(); });
 }
 
 function renderOverview(){
@@ -2098,6 +2223,39 @@ function examModal(sid, existing){
   });
 }
 function addExamItem(sid){ examModal(sid, null); }
+function addBlockedSlot(){
+  showModal(`
+    <h3>新增固定不可預約時段</h3>
+    <div class="field"><label>星期</label><select id="m-dow">${dayNames.map((d,i)=>`<option value="${i}">${d}</option>`).join('')}</select></div>
+    <div class="form-row">
+      <div class="field"><label>開始時</label><select id="m-startHour">${hourOptions(14)}</select></div>
+      <div class="field"><label>開始分</label><select id="m-startMin">${minuteOptions(0)}</select></div>
+    </div>
+    <div class="form-row">
+      <div class="field"><label>結束時</label><select id="m-endHour">${hourOptions(17)}</select></div>
+      <div class="field"><label>結束分</label><select id="m-endMin">${minuteOptions(0)}</select></div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" id="m-cancel">取消</button>
+      <button class="btn btn-primary" id="m-save">新增</button>
+    </div>
+  `);
+  $('#m-cancel').addEventListener('click', closeModal);
+  $('#m-save').addEventListener('click', async ()=>{
+    state.profile.blockedSlots = state.profile.blockedSlots || [];
+    state.profile.blockedSlots.push({
+      id: uid(),
+      dayOfWeek: Number($('#m-dow').value),
+      startHour: Number($('#m-startHour').value),
+      startMinute: Number($('#m-startMin').value),
+      endHour: Number($('#m-endHour').value),
+      endMinute: Number($('#m-endMin').value)
+    });
+    closeModal();
+    await saveProfile();
+    render();
+  });
+}
 function editExamItem(id){
   const existing = state.examDates.find(x=>x.id===id);
   if(existing) examModal(existing.studentId, existing);
