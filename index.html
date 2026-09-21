@@ -1126,14 +1126,6 @@ function renderStudentView(){
         👩🏻‍🏫上課代碼：qqa-kriu-bfw
       </div>
     </div>
-    <div class="card" style="text-align:center;">
-      <div style="font-size:13px;color:var(--ink-soft);margin-bottom:4px;">${escapeHtml(s.name)} 同學</div>
-      <div style="font-size:18px;font-weight:700;">加油！繼續保持 💪</div>
-    </div>
-    <div class="card" style="text-align:center;">
-      <div style="font-size:12px;color:var(--ink-soft);">累積上課時數</div>
-      <div style="font-size:24px;font-weight:700;font-family:'Noto Serif TC',serif;color:var(--teal);">${cumulativeHoursThrough(s.id, state.cursor.getFullYear(), state.cursor.getMonth()).toFixed(1)} 小時</div>
-    </div>
     <div class="card">
       <h3 class="section-title">📅 下一次上課時間</h3>
       <div style="font-size:20px;font-weight:700;color:var(--teal);">${nextText}</div>
@@ -1161,7 +1153,10 @@ function renderStudentView(){
     </div>
 
     <div class="card">
-      <h3 class="section-title">${m+1} 月上課時間</h3>
+      <h3 class="section-title" style="display:flex;align-items:baseline;justify-content:space-between;">
+        <span>${m+1} 月上課時間</span>
+        <span style="font-size:11px;color:var(--ink-soft);font-weight:400;">累積 ${cumulativeHoursThrough(s.id, y, m).toFixed(1)} 小時</span>
+      </h3>
       ${monthSched.length ? monthSched.map(sc=>{
         const dow = new Date(sc.date+'T00:00:00').getDay();
         const [yy,mm,dd] = sc.date.split('-');
