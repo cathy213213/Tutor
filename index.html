@@ -132,6 +132,7 @@
   .pub-day .pub-num{font-size:11px;font-weight:700;color:var(--ink);margin-bottom:3px;}
   .pub-blocks{display:flex;flex-direction:column;gap:2px;width:100%;align-items:flex-start;}
   .pub-block{width:85%;height:6px;border-radius:3px;background:var(--red);}
+  .pub-entry{font-size:9px;line-height:1.35;color:var(--teal);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;width:100%;display:block;}
   .pub-more{font-size:9px;color:var(--ink-soft);margin-top:1px;}
   .day.clickable{cursor:pointer;}
   .day.clickable:hover{background:var(--paper);}
@@ -1004,9 +1005,10 @@ function renderPublicCalendarCard(){
   const dataMap = availableDatesInMonth(y, m);
   const firstDow = new Date(y, m, 1).getDay();
   const daysInMonth = new Date(y, m+1, 0).getDate();
-  const MAX_BLOCKS = 4;
+  const MAX_ENTRIES = 4;
+  const latest = latestScheduledMonth();
   const atStart = (y*12+m) <= (CHART_START_YEAR*12+CHART_START_MONTH);
-  const blockColor = 'var(--teal)';
+  const atEnd = (y*12+m) >= (latest.y*12+latest.m);
   let calHtml = '';
   for(let i=0;i<firstDow;i++) calHtml += `<div class="pub-day pad"></div>`;
   for(let d=1; d<=daysInMonth; d++){
@@ -1016,12 +1018,12 @@ function renderPublicCalendarCard(){
     const classes = ['pub-day'];
     if(isToday) classes.push('today');
     if(entries.length) classes.push('has-busy');
-    const shown = entries.slice(0, MAX_BLOCKS);
+    const shown = entries.slice(0, MAX_ENTRIES);
     const extra = entries.length - shown.length;
     calHtml += `<div class="${classes.join(' ')}" data-pubdate="${key}">
       <span class="pub-num">${d}</span>
       <div class="pub-blocks">
-        ${shown.map(()=>`<span class="pub-block" style="background:${blockColor};"></span>`).join('')}
+        ${shown.map(e=>`<span class="pub-entry">${e.label}</span>`).join('')}
         ${extra>0 ? `<span class="pub-more">+${extra}</span>` : ''}
       </div>
     </div>`;
@@ -1034,11 +1036,11 @@ function renderPublicCalendarCard(){
       <div class="cal-head">
         <div class="cal-nav"><button id="pubCalPrev" ${atStart?'disabled style="opacity:0.3;"':''}>‹</button></div>
         <h2>${y} 年 ${m+1} 月</h2>
-        <div class="cal-nav"><button id="pubCalNext">›</button></div>
+        <div class="cal-nav"><button id="pubCalNext" ${atEnd?'disabled style="opacity:0.3;"':''}>›</button></div>
       </div>
       <div class="grid7">${dowNames.map(d=>`<div class="dow">${d}</div>`).join('')}</div>
       <div class="grid7" id="pubCalGrid">${calHtml}</div>
-      <div class="legend"><span><i style="background:${blockColor}"></i>尚可預約</span></div>
+      <div class="legend"><span><i style="background:var(--teal)"></i>尚可預約</span></div>
     </div>
   `;
 }
@@ -1968,6 +1970,15 @@ function renderProfilePage(){
   bindPublicCalendarNav();
 }
 
+function latestScheduledMonth(){
+  const now = new Date();
+  let maxY = now.getFullYear(), maxM = now.getMonth();
+  state.schedules.forEach(sc=>{
+    const [yy,mm] = sc.date.split('-').map(Number);
+    if(yy>maxY || (yy===maxY && (mm-1)>maxM)){ maxY=yy; maxM=mm-1; }
+  });
+  return { y: maxY, m: maxM };
+}
 function bindPublicCalendarNav(){
   $('#pubCalPrev').addEventListener('click', ()=>{
     const y = state.cursor.getFullYear(), m = state.cursor.getMonth();
@@ -1975,7 +1986,13 @@ function bindPublicCalendarNav(){
     state.cursor = new Date(y, m-1, 1);
     render();
   });
-  $('#pubCalNext').addEventListener('click', ()=>{ state.cursor = new Date(state.cursor.getFullYear(), state.cursor.getMonth()+1, 1); render(); });
+  $('#pubCalNext').addEventListener('click', ()=>{
+    const y = state.cursor.getFullYear(), m = state.cursor.getMonth();
+    const latest = latestScheduledMonth();
+    if((y*12+m) >= (latest.y*12+latest.m)) return;
+    state.cursor = new Date(y, m+1, 1);
+    render();
+  });
 }
 
 function renderPublicCalendarPage(){
