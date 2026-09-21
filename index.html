@@ -298,6 +298,7 @@ let state = {
   showOverview: false,
   showProfileEdit: false,
   lockedProfile: false,
+  lockedCalendar: false,
   isPreview: false,
   profile: null,
   viewCounts: {},
@@ -324,6 +325,11 @@ function applyRouteFromHash(){
     state.lockedProfile = true;
   } else if(window.location.hash === '#/about-preview'){
     state.lockedProfile = true;
+    state.isPreview = true;
+  } else if(window.location.hash === '#/calendar'){
+    state.lockedCalendar = true;
+  } else if(window.location.hash === '#/calendar-preview'){
+    state.lockedCalendar = true;
     state.isPreview = true;
   }
 }
@@ -550,6 +556,7 @@ async function loadData(){
   if(!state.viewTracked){
     state.viewTracked = true;
     if(state.lockedProfile && !state.isPreview) trackViewOncePerDevice('about');
+    else if(state.lockedCalendar && !state.isPreview) trackViewOncePerDevice('calendar');
     else if(state.lockedParent && state.currentStudentId) trackViewOncePerDevice(state.currentStudentId+'_parent');
     else if(state.lockedStudent && state.currentStudentId) trackViewOncePerDevice(state.currentStudentId+'_student');
   }
@@ -889,6 +896,7 @@ function renderPublicCalendarCard(){
   const firstDow = new Date(y, m, 1).getDay();
   const daysInMonth = new Date(y, m+1, 0).getDate();
   const MAX_BLOCKS = 4;
+  const atStart = (y*12+m) <= (CHART_START_YEAR*12+CHART_START_MONTH);
   let calHtml = '';
   for(let i=0;i<firstDow;i++) calHtml += `<div class="pub-day pad"></div>`;
   for(let d=1; d<=daysInMonth; d++){
@@ -914,7 +922,7 @@ function renderPublicCalendarCard(){
       <p style="font-size:12px;color:var(--ink-soft);margin:0 0 12px;">紅色色塊代表已預約，點日期可以看確切時段，僅供參考，實際時段請與老師確認。</p>
       <p style="font-size:12px;color:var(--teal);font-weight:600;background:var(--teal-soft);padding:8px 12px;border-radius:8px;margin:0 0 14px;">🌤️ 平日白天時段享優惠價，歡迎聯繫老師洽詢</p>
       <div class="cal-head">
-        <div class="cal-nav"><button id="pubCalPrev">‹</button></div>
+        <div class="cal-nav"><button id="pubCalPrev" ${atStart?'disabled style="opacity:0.3;"':''}>‹</button></div>
         <h2>${y} 年 ${m+1} 月</h2>
         <div class="cal-nav"><button id="pubCalNext">›</button></div>
       </div>
@@ -1093,6 +1101,16 @@ function renderProfileEditor(){
     </div>
 
     <div class="card">
+      <h3 class="section-title">📅 公開行事曆專屬連結</h3>
+      <p style="font-size:12px;color:var(--ink-soft);margin:0 0 12px;">獨立的一頁，只有行事曆、沒有其他介紹內容，適合直接傳給家長看有沒有空檔。</p>
+      <p style="font-size:13px;color:var(--ink-soft);margin:0 0 12px;">👀 累積瀏覽次數：${state.viewCounts.calendar || 0} 次</p>
+      <div style="display:flex;gap:12px;flex-wrap:wrap;">
+        <button class="btn btn-ghost" id="previewCalendarBtn">👀 預覽行事曆</button>
+        <button class="btn btn-primary" id="copyCalendarBtn">複製行事曆連結</button>
+      </div>
+    </div>
+
+    <div class="card">
       <h3 class="section-title">老師介紹頁編輯</h3>
       <div style="text-align:center;margin-bottom:16px;">
         ${p.photoUrl
@@ -1225,7 +1243,10 @@ function renderProfileEditor(){
       ${(p.blockedSlots && p.blockedSlots.length) ? p.blockedSlots.map(b=>`
         <div class="sched-item">
           <span class="sched-when">每週${dayNames[b.dayOfWeek]}　${formatTime(b.startHour,b.startMinute)}-${formatTime(b.endHour,b.endMinute)}</span>
-          <button data-del-block="${b.id}" style="color:var(--red)">刪除</button>
+          <span style="display:flex;gap:12px">
+            <button data-edit-block="${b.id}">編輯</button>
+            <button data-del-block="${b.id}" style="color:var(--red)">刪除</button>
+          </span>
         </div>`).join('') : `<div class="sched-empty">尚未設定</div>`}
       <div class="sched-add-row"><button id="addBlockedSlotBtn">＋ 新增封鎖時段</button></div>
     </div>
@@ -1245,6 +1266,7 @@ function renderProfileEditor(){
     showToast('已儲存');
   });
   $('#addBlockedSlotBtn').addEventListener('click', addBlockedSlot);
+  area.querySelectorAll('[data-edit-block]').forEach(btn=> btn.addEventListener('click', ()=> editBlockedSlot(btn.dataset.editBlock)));
   area.querySelectorAll('[data-del-block]').forEach(btn=>{
     btn.addEventListener('click', async ()=>{
       p.blockedSlots = (p.blockedSlots||[]).filter(b=>b.id!==btn.dataset.delBlock);
@@ -1338,6 +1360,8 @@ function renderProfileEditor(){
   });
   $('#copyAboutBtn').addEventListener('click', copyAboutLink);
   $('#previewProfileBtn').addEventListener('click', previewProfile);
+  $('#copyCalendarBtn').addEventListener('click', copyCalendarLink);
+  $('#previewCalendarBtn').addEventListener('click', previewCalendarLink);
   bindLightboxImages(area);
   bindBackToMoreBanner();
 }
@@ -1688,6 +1712,48 @@ function previewProfile(){
   window.open(`${base}#/about-preview`, '_blank');
 }
 
+async function copyCalendarLink(){
+  const base = getBaseUrl();
+  if(!base){
+    showModal(`
+      <h3>目前無法產生連結</h3>
+      <p>這個畫面現在是 Claude 對話裡的預覽模式，沒有真正的網址。請先把這個頁面發布到一個真正的網址，再從那個網址打開這個工具，這個按鈕才會正常運作。</p>
+      <div class="modal-actions"><button class="btn btn-primary" id="m-close">了解</button></div>
+    `);
+    $('#m-close').addEventListener('click', closeModal);
+    return;
+  }
+  const url = `${base}#/calendar`;
+  try{
+    await navigator.clipboard.writeText(url);
+    showToast('行事曆連結已複製');
+  }catch(e){
+    showModal(`
+      <h3>公開行事曆連結</h3>
+      <p>請手動選取並複製以下網址：</p>
+      <div class="link-box"><input type="text" id="m-link" value="${url}" readonly></div>
+      <div class="modal-actions"><button class="btn btn-primary" id="m-close">關閉</button></div>
+    `);
+    const input = $('#m-link');
+    input.focus();
+    input.select();
+    $('#m-close').addEventListener('click', closeModal);
+  }
+}
+function previewCalendarLink(){
+  const base = getBaseUrl();
+  if(!base){
+    showModal(`
+      <h3>目前無法預覽</h3>
+      <p>這個畫面現在是 Claude 對話裡的預覽模式，沒有真正的網址，沒辦法開啟預覽。請先把這個頁面發布到一個真正的網址再試一次。</p>
+      <div class="modal-actions"><button class="btn btn-primary" id="m-close">了解</button></div>
+    `);
+    $('#m-close').addEventListener('click', closeModal);
+    return;
+  }
+  window.open(`${base}#/calendar-preview`, '_blank');
+}
+
 function renderProfilePage(){
   const area = $('#mainArea');
   const p = state.profile || {};
@@ -1735,8 +1801,24 @@ function renderProfilePage(){
   `;
   bindLightboxImages(area);
   bindPublicCalendarEvents();
-  $('#pubCalPrev').addEventListener('click', ()=>{ state.cursor = new Date(state.cursor.getFullYear(), state.cursor.getMonth()-1, 1); render(); });
+  bindPublicCalendarNav();
+}
+
+function bindPublicCalendarNav(){
+  $('#pubCalPrev').addEventListener('click', ()=>{
+    const y = state.cursor.getFullYear(), m = state.cursor.getMonth();
+    if((y*12+m) <= (CHART_START_YEAR*12+CHART_START_MONTH)) return;
+    state.cursor = new Date(y, m-1, 1);
+    render();
+  });
   $('#pubCalNext').addEventListener('click', ()=>{ state.cursor = new Date(state.cursor.getFullYear(), state.cursor.getMonth()+1, 1); render(); });
+}
+
+function renderPublicCalendarPage(){
+  const area = $('#mainArea');
+  area.innerHTML = renderPublicCalendarCard();
+  bindPublicCalendarEvents();
+  bindPublicCalendarNav();
 }
 
 function renderOverview(){
@@ -2223,38 +2305,50 @@ function examModal(sid, existing){
   });
 }
 function addExamItem(sid){ examModal(sid, null); }
-function addBlockedSlot(){
+function blockedSlotModal(existing){
+  const b = existing || { dayOfWeek:6, startHour:14, startMinute:0, endHour:17, endMinute:0 };
   showModal(`
-    <h3>新增固定不可預約時段</h3>
-    <div class="field"><label>星期</label><select id="m-dow">${dayNames.map((d,i)=>`<option value="${i}">${d}</option>`).join('')}</select></div>
+    <h3>${existing?'編輯':'新增'}固定不可預約時段</h3>
+    <div class="field"><label>星期</label><select id="m-dow">${dayNames.map((d,i)=>`<option value="${i}" ${b.dayOfWeek===i?'selected':''}>${d}</option>`).join('')}</select></div>
     <div class="form-row">
-      <div class="field"><label>開始時</label><select id="m-startHour">${hourOptions(14)}</select></div>
-      <div class="field"><label>開始分</label><select id="m-startMin">${minuteOptions(0)}</select></div>
+      <div class="field"><label>開始時</label><select id="m-startHour">${hourOptions(b.startHour)}</select></div>
+      <div class="field"><label>開始分</label><select id="m-startMin">${minuteOptions(b.startMinute)}</select></div>
     </div>
     <div class="form-row">
-      <div class="field"><label>結束時</label><select id="m-endHour">${hourOptions(17)}</select></div>
-      <div class="field"><label>結束分</label><select id="m-endMin">${minuteOptions(0)}</select></div>
+      <div class="field"><label>結束時</label><select id="m-endHour">${hourOptions(b.endHour)}</select></div>
+      <div class="field"><label>結束分</label><select id="m-endMin">${minuteOptions(b.endMinute)}</select></div>
     </div>
     <div class="modal-actions">
       <button class="btn btn-ghost" id="m-cancel">取消</button>
-      <button class="btn btn-primary" id="m-save">新增</button>
+      <button class="btn btn-primary" id="m-save">${existing?'儲存':'新增'}</button>
     </div>
   `);
   $('#m-cancel').addEventListener('click', closeModal);
   $('#m-save').addEventListener('click', async ()=>{
-    state.profile.blockedSlots = state.profile.blockedSlots || [];
-    state.profile.blockedSlots.push({
-      id: uid(),
+    const data = {
+      id: existing ? existing.id : uid(),
       dayOfWeek: Number($('#m-dow').value),
       startHour: Number($('#m-startHour').value),
       startMinute: Number($('#m-startMin').value),
       endHour: Number($('#m-endHour').value),
       endMinute: Number($('#m-endMin').value)
-    });
+    };
+    state.profile.blockedSlots = state.profile.blockedSlots || [];
+    if(existing){
+      const idx = state.profile.blockedSlots.findIndex(x=>x.id===existing.id);
+      state.profile.blockedSlots[idx] = data;
+    } else {
+      state.profile.blockedSlots.push(data);
+    }
     closeModal();
     await saveProfile();
     render();
   });
+}
+function addBlockedSlot(){ blockedSlotModal(null); }
+function editBlockedSlot(id){
+  const existing = (state.profile.blockedSlots||[]).find(x=>x.id===id);
+  if(existing) blockedSlotModal(existing);
 }
 function editExamItem(id){
   const existing = state.examDates.find(x=>x.id===id);
@@ -2720,24 +2814,28 @@ function renderModeUI(){
   $('#overviewRow').style.display = 'none';
   const ABOUT_TITLE = '柏萱老師👩🏻\u200d🏫 ｜高中數學教師';
   const DEFAULT_TITLE = '數學家教紀錄📝';
-  $('#mainTitle').textContent = state.lockedProfile ? ABOUT_TITLE : DEFAULT_TITLE;
-  document.title = state.lockedProfile ? ABOUT_TITLE : DEFAULT_TITLE;
+  const CAL_TITLE = '上課時段預覽📅';
+  const shownTitle = state.lockedProfile ? ABOUT_TITLE : (state.lockedCalendar ? CAL_TITLE : DEFAULT_TITLE);
+  $('#mainTitle').textContent = shownTitle;
+  document.title = shownTitle;
   const prof = state.profile || {};
   const ABOUT_TAGLINE = prof.aboutTagline || DEFAULT_ABOUT_TAGLINE;
   const DEFAULT_TAGLINE = prof.appTagline || DEFAULT_APP_TAGLINE;
-  $('#encourageText').textContent = state.lockedProfile ? ABOUT_TAGLINE : DEFAULT_TAGLINE;
+  $('#encourageText').textContent = state.lockedProfile ? ABOUT_TAGLINE : (state.lockedCalendar ? '' : DEFAULT_TAGLINE);
   const s = currentStudent();
   $('#subline').textContent = state.lockedProfile
     ? '老師介紹頁'
-    : state.lockedParent
-      ? (s ? `${s.name}的上課紀錄` : '找不到這位學生')
-      : state.lockedStudent
-        ? (s ? `${s.name} 同學專屬頁面` : '找不到這位學生')
-        : (state.viewMode==='teacher'
-          ? `共 ${state.students.length} 位學生・點選日曆日期即可新增或編輯`
-          : state.viewMode==='parent'
-            ? (s ? `目前檢視：${s.name}` : '請選擇學生')
-            : (s ? `學生檢視預覽：${s.name}` : '請選擇學生'));
+    : state.lockedCalendar
+      ? '公開行事曆'
+      : state.lockedParent
+        ? (s ? `${s.name}的上課紀錄` : '找不到這位學生')
+        : state.lockedStudent
+          ? (s ? `${s.name} 同學專屬頁面` : '找不到這位學生')
+          : (state.viewMode==='teacher'
+            ? `共 ${state.students.length} 位學生・點選日曆日期即可新增或編輯`
+            : state.viewMode==='parent'
+              ? (s ? `目前檢視：${s.name}` : '請選擇學生')
+              : (s ? `學生檢視預覽：${s.name}` : '請選擇學生'));
 }
 
 function updateNavActiveState(){
@@ -2889,6 +2987,7 @@ function renderMoreTab(){
   area.innerHTML = `
     <div class="card">
       <div class="sched-item" style="cursor:pointer;" id="moreProfileEdit"><span class="sched-when">👩🏻‍🏫老師介紹</span><span style="color:var(--ink-soft);">›</span></div>
+      <div class="sched-item" style="cursor:pointer;" id="moreCalPreview"><span class="sched-when">📅 公開行事曆預覽</span><span style="color:var(--ink-soft);">›</span></div>
       <div class="sched-item" style="cursor:pointer;" id="moreIncomeChart"><span class="sched-when">📊 收入總表</span><span style="color:var(--ink-soft);">›</span></div>
       <div class="sched-item" style="cursor:pointer;" id="moreParentPreview"><span class="sched-when">👩🏻家長預覽</span><span style="color:var(--ink-soft);">›</span></div>
       <div class="sched-item" style="cursor:pointer;" id="moreStudentPreview"><span class="sched-when">👧🏻學生預覽</span><span style="color:var(--ink-soft);">›</span></div>
@@ -2901,6 +3000,7 @@ function renderMoreTab(){
     </div>
   `;
   $('#moreProfileEdit').addEventListener('click', ()=>{ state.teacherTab='profile'; render(); });
+  $('#moreCalPreview').addEventListener('click', previewCalendarLink);
   $('#moreIncomeChart').addEventListener('click', ()=>{ state.teacherTab='incomeChart'; render(); });
   $('#moreParentPreview').addEventListener('click', ()=> pickStudentForPreview('parent'));
   $('#moreStudentPreview').addEventListener('click', ()=> pickStudentForPreview('student'));
@@ -2984,12 +3084,13 @@ function render(){
   if(!state.loaded) return;
   renderModeUI();
 
-  const locked = state.lockedParent || state.lockedStudent || state.lockedProfile;
+  const locked = state.lockedParent || state.lockedStudent || state.lockedProfile || state.lockedCalendar;
 
   if(locked){
     $('#bottomNav').style.display = 'none';
     $('#studentTabs').style.display = 'none';
     if(state.lockedProfile){ renderProfilePage(); return; }
+    if(state.lockedCalendar){ renderPublicCalendarPage(); return; }
     if(state.lockedStudent){ renderStudentView(); return; }
     renderMain(); // lockedParent
     return;
