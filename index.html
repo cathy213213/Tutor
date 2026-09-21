@@ -999,7 +999,7 @@ function renderPublicCalendarCard(){
       <h3 class="section-title">🔒 公開行事曆－剩餘可預約時段</h3>
       <p style="font-size:12px;color:var(--ink-soft);margin:0 0 12px;">${mode==='available' ? '綠色色塊代表尚可預約時段，' : '紅色色塊代表已預約，'}點日期可以看確切時段，僅供參考，實際時段請與老師確認。</p>
       <p style="font-size:12px;color:var(--teal);font-weight:600;background:var(--teal-soft);padding:8px 12px;border-radius:8px;margin:0 0 14px;">🌤️ 平日白天時段享優惠價，歡迎聯繫老師洽詢</p>
-      <button class="btn btn-primary" id="pubCalModeToggle" style="width:100%;margin-bottom:14px;">${mode==='available' ? '← 顯示已預約時段' : '📆 本月尚可預約時段'}</button>
+      <button class="btn btn-primary" id="pubCalModeToggle" style="width:100%;margin-bottom:14px;background:var(--teal);border-color:var(--teal);">${mode==='available' ? '← 顯示已預約時段' : '📆 本月尚可預約時段'}</button>
       <div class="cal-head">
         <div class="cal-nav"><button id="pubCalPrev" ${atStart?'disabled style="opacity:0.3;"':''}>‹</button></div>
         <h2>${y} 年 ${m+1} 月</h2>
