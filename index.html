@@ -881,18 +881,27 @@ function publicBusyEntriesForDate(dateKey){
     if(!st || st.excludeFromOverview) return;
     entries.push({ start: sc.hour*60+sc.minute, label: formatTimeRange(sc.hour, sc.minute, sc.hours) });
   });
-  const blocked = (state.profile && state.profile.blockedSlots) || [];
-  blocked.forEach(b=>{
-    if(b.dayOfWeek!==dow) return;
-    entries.push({ start: b.startHour*60+b.startMinute, label: `${formatTime(b.startHour,b.startMinute)}-${formatTime(b.endHour,b.endMinute)}` });
-  });
-  specialClosuresForDate(dateKey).forEach(c=>{
-    if(c.allDay){
-      entries.push({ start: -1, label: '全天公休' });
-    } else {
-      entries.push({ start: c.startHour*60+c.startMinute, label: `${formatTime(c.startHour,c.startMinute)}-${formatTime(c.endHour,c.endMinute)}（公休）` });
-    }
-  });
+  const closures = specialClosuresForDate(dateKey);
+  const onlyClosure = closures.find(c=>c.onlyMode);
+  if(onlyClosure){
+    const oStart = onlyClosure.startHour*60+onlyClosure.startMinute;
+    const oEnd = onlyClosure.endHour*60+onlyClosure.endMinute;
+    if(oStart>0) entries.push({ start:-2, label: `00:00-${formatTime(onlyClosure.startHour,onlyClosure.startMinute)}（不可預約）` });
+    if(oEnd<24*60) entries.push({ start:oEnd, label: `${formatTime(onlyClosure.endHour,onlyClosure.endMinute)}-24:00（不可預約）` });
+  } else {
+    const blocked = (state.profile && state.profile.blockedSlots) || [];
+    blocked.forEach(b=>{
+      if(b.dayOfWeek!==dow) return;
+      entries.push({ start: b.startHour*60+b.startMinute, label: `${formatTime(b.startHour,b.startMinute)}-${formatTime(b.endHour,b.endMinute)}` });
+    });
+    closures.forEach(c=>{
+      if(c.allDay){
+        entries.push({ start: -1, label: '全天公休' });
+      } else {
+        entries.push({ start: c.startHour*60+c.startMinute, label: `${formatTime(c.startHour,c.startMinute)}-${formatTime(c.endHour,c.endMinute)}（公休）` });
+      }
+    });
+  }
   entries.sort((a,b)=> a.start-b.start);
   return entries;
 }
@@ -929,7 +938,10 @@ function availableEntriesForDate(dateKey){
   const closures = specialClosuresForDate(dateKey);
   if(closures.some(c=>c.allDay)) return [];
   const dow = new Date(dateKey+'T00:00:00').getDay();
-  const windows = ((state.profile && state.profile.availabilityWindows) || []).filter(w=>w.dayOfWeek===dow);
+  const onlyClosure = closures.find(c=>c.onlyMode);
+  const windows = onlyClosure
+    ? [{ startHour: onlyClosure.startHour, startMinute: onlyClosure.startMinute, endHour: onlyClosure.endHour, endMinute: onlyClosure.endMinute }]
+    : ((state.profile && state.profile.availabilityWindows) || []).filter(w=>w.dayOfWeek===dow);
   if(!windows.length) return [];
   const occupied = [];
   state.schedules.forEach(sc=>{
@@ -939,13 +951,15 @@ function availableEntriesForDate(dateKey){
     const start = sc.hour*60+sc.minute;
     occupied.push([start, start + Math.round((sc.hours||0)*60)]);
   });
-  ((state.profile && state.profile.blockedSlots) || []).forEach(b=>{
-    if(b.dayOfWeek!==dow) return;
-    occupied.push([b.startHour*60+b.startMinute, b.endHour*60+b.endMinute]);
-  });
-  closures.forEach(c=>{
-    occupied.push([c.startHour*60+c.startMinute, c.endHour*60+c.endMinute]);
-  });
+  if(!onlyClosure){
+    ((state.profile && state.profile.blockedSlots) || []).forEach(b=>{
+      if(b.dayOfWeek!==dow) return;
+      occupied.push([b.startHour*60+b.startMinute, b.endHour*60+b.endMinute]);
+    });
+    closures.forEach(c=>{
+      occupied.push([c.startHour*60+c.startMinute, c.endHour*60+c.endMinute]);
+    });
+  }
   let free = [];
   windows.forEach(w=>{
     const wStart = w.startHour*60+w.startMinute, wEnd = w.endHour*60+w.endMinute;
@@ -975,6 +989,7 @@ function renderPublicCalendarCard(){
   const MAX_BLOCKS = 4;
   const atStart = (y*12+m) <= (CHART_START_YEAR*12+CHART_START_MONTH);
   const blockColor = mode==='available' ? 'var(--teal)' : 'var(--red)';
+  const toggleColor = mode==='available' ? 'var(--red)' : 'var(--teal)';
   let calHtml = '';
   for(let i=0;i<firstDow;i++) calHtml += `<div class="pub-day pad"></div>`;
   for(let d=1; d<=daysInMonth; d++){
@@ -999,7 +1014,7 @@ function renderPublicCalendarCard(){
       <h3 class="section-title">🔒 公開行事曆－剩餘可預約時段</h3>
       <p style="font-size:12px;color:var(--ink-soft);margin:0 0 12px;">${mode==='available' ? '綠色色塊代表尚可預約時段，' : '紅色色塊代表已預約，'}點日期可以看確切時段，僅供參考，實際時段請與老師確認。</p>
       <p style="font-size:12px;color:var(--teal);font-weight:600;background:var(--teal-soft);padding:8px 12px;border-radius:8px;margin:0 0 14px;">🌤️ 平日白天時段享優惠價，歡迎聯繫老師洽詢</p>
-      <button class="btn btn-primary" id="pubCalModeToggle" style="width:100%;margin-bottom:14px;background:var(--teal);border-color:var(--teal);">${mode==='available' ? '← 顯示已預約時段' : '📆 本月尚可預約時段'}</button>
+      <button class="btn btn-primary" id="pubCalModeToggle" style="width:100%;margin-bottom:14px;background:${toggleColor};border-color:${toggleColor};">${mode==='available' ? '← 顯示已預約時段' : '📆 本月尚可預約時段'}</button>
       <div class="cal-head">
         <div class="cal-nav"><button id="pubCalPrev" ${atStart?'disabled style="opacity:0.3;"':''}>‹</button></div>
         <h2>${y} 年 ${m+1} 月</h2>
@@ -1358,7 +1373,11 @@ function renderProfileEditor(){
       ${(p.specialClosures && p.specialClosures.length) ? p.specialClosures.slice().sort((a,b)=>a.date.localeCompare(b.date)).map(c=>{
         const [cy,cm,cd] = c.date.split('-');
         const cdow = new Date(c.date+'T00:00:00').getDay();
-        const label = c.allDay ? '整天公休' : `${formatTime(c.startHour,c.startMinute)}-${formatTime(c.endHour,c.endMinute)}`;
+        const label = c.allDay
+          ? '整天公休'
+          : (c.onlyMode
+            ? `只開放 ${formatTime(c.startHour,c.startMinute)}-${formatTime(c.endHour,c.endMinute)}`
+            : `${formatTime(c.startHour,c.startMinute)}-${formatTime(c.endHour,c.endMinute)} 公休`);
         return `<div class="sched-item">
           <span class="sched-when">${Number(cm)}/${Number(cd)}（${dayNames[cdow]}）　${label}</span>
           <span style="display:flex;gap:12px">
@@ -2533,15 +2552,28 @@ function editAvailWindow(id){
   if(existing) availWindowModal(existing);
 }
 function specialClosureModal(existing){
-  const c = existing || { date: toKey(new Date()), allDay:true, startHour:9, startMinute:0, endHour:21, endMinute:30 };
+  const c = existing || { date: toKey(new Date()), allDay:true, onlyMode:false, startHour:9, startMinute:0, endHour:21, endMinute:30 };
+  const typeVal = c.allDay ? 'allday' : (c.onlyMode ? 'only' : 'partial');
   showModal(`
     <h3>${existing?'編輯':'新增'}特殊公休日期</h3>
-    <div class="field"><label>日期</label><input type="date" id="m-date" value="${c.date}"></div>
-    <div class="field" style="display:flex;align-items:center;gap:8px;">
-      <input type="checkbox" id="m-allday" style="width:auto;" ${c.allDay?'checked':''}>
-      <label for="m-allday" style="margin:0;">整天公休</label>
+    ${existing ? `
+      <div class="field"><label>日期</label><input type="date" id="m-date" value="${c.date}"></div>
+    ` : `
+      <div class="form-row">
+        <div class="field"><label>起始日期</label><input type="date" id="m-startDate" value="${c.date}"></div>
+        <div class="field"><label>結束日期</label><input type="date" id="m-endDate" value="${c.date}"></div>
+      </div>
+      <p style="font-size:11px;color:var(--ink-soft);margin:-6px 0 12px;">選一段範圍會自動幫你每天各新增一筆，不用一天一天點。</p>
+    `}
+    <div class="field">
+      <label>公休類型</label>
+      <select id="m-closure-type">
+        <option value="allday" ${typeVal==='allday'?'selected':''}>整天公休</option>
+        <option value="partial" ${typeVal==='partial'?'selected':''}>部分時段公休（其他時段正常開放）</option>
+        <option value="only" ${typeVal==='only'?'selected':''}>只開放某個時段（其他時段都不可預約）</option>
+      </select>
     </div>
-    <div id="m-time-wrap" style="${c.allDay?'display:none;':''}">
+    <div id="m-time-wrap" style="${typeVal==='allday'?'display:none;':''}">
       <div class="form-row">
         <div class="field"><label>開始時</label><select id="m-startHour">${hourOptions(c.startHour)}</select></div>
         <div class="field"><label>開始分</label><select id="m-startMin">${minuteOptions(c.startMinute)}</select></div>
@@ -2556,17 +2588,15 @@ function specialClosureModal(existing){
       <button class="btn btn-primary" id="m-save">${existing?'儲存':'新增'}</button>
     </div>
   `);
-  $('#m-allday').addEventListener('change', ()=>{
-    $('#m-time-wrap').style.display = $('#m-allday').checked ? 'none' : '';
+  $('#m-closure-type').addEventListener('change', ()=>{
+    $('#m-time-wrap').style.display = $('#m-closure-type').value==='allday' ? 'none' : '';
   });
   $('#m-cancel').addEventListener('click', closeModal);
   $('#m-save').addEventListener('click', async ()=>{
-    const date = $('#m-date').value;
-    if(!date) return;
-    const allDay = $('#m-allday').checked;
-    const data = {
-      id: existing ? existing.id : uid(),
-      date, allDay,
+    const type = $('#m-closure-type').value;
+    const allDay = type==='allday';
+    const onlyMode = type==='only';
+    const timeFields = {
       startHour: allDay ? 0 : Number($('#m-startHour').value),
       startMinute: allDay ? 0 : Number($('#m-startMin').value),
       endHour: allDay ? 23 : Number($('#m-endHour').value),
@@ -2574,10 +2604,20 @@ function specialClosureModal(existing){
     };
     state.profile.specialClosures = state.profile.specialClosures || [];
     if(existing){
+      const date = $('#m-date').value;
+      if(!date) return;
       const idx = state.profile.specialClosures.findIndex(x=>x.id===existing.id);
-      state.profile.specialClosures[idx] = data;
+      state.profile.specialClosures[idx] = { id: existing.id, date, allDay, onlyMode, ...timeFields };
     } else {
-      state.profile.specialClosures.push(data);
+      const startDate = $('#m-startDate').value, endDate = $('#m-endDate').value;
+      if(!startDate || !endDate) return;
+      let d = new Date(startDate+'T00:00:00');
+      const end = new Date(endDate+'T00:00:00');
+      if(d>end) return;
+      while(d<=end){
+        state.profile.specialClosures.push({ id: uid(), date: toKey(d), allDay, onlyMode, ...timeFields });
+        d.setDate(d.getDate()+1);
+      }
     }
     closeModal();
     await saveProfile();
