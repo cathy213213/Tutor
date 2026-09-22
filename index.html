@@ -704,6 +704,7 @@ function generateMonthlySummaryText(sid, year, month){
   const lines = [];
   lines.push(`${year}年${month+1}月${s.name}`);
   list.forEach(sc=>{
+    if(sc.isCredit) return;
     const [yy,mm,dd] = sc.date.split('-');
     const dow = new Date(sc.date+'T00:00:00').getDay();
     const startTotalMin = sc.hour*60+sc.minute;
@@ -715,6 +716,7 @@ function generateMonthlySummaryText(sid, year, month){
     lines.push(`${Number(mm)}/${Number(dd)}（${dowNames[dow]}）${sc.hour}:${pad(sc.minute)}-${endH}:${pad(endM)}${excludeNote}${extraNote}`);
   });
   if(feeInfo.deferredIn>0) lines.push(`（含上月遞延 ${feeInfo.deferredIn}小時）`);
+  if(feeInfo.deferredIn<0) lines.push(`（含上月退還 ${Math.abs(feeInfo.deferredIn)}小時）`);
   const hoursLabel = Number.isInteger(totalHours) ? totalHours : totalHours.toFixed(1);
   lines.push(`共${hoursLabel}小時（*${rate||0}）`);
   if(feeInfo.milestone.hit){
@@ -1157,7 +1159,7 @@ function renderStudentView(){
         <span>${m+1} 月上課時間</span>
         <span style="font-size:11px;color:var(--ink-soft);font-weight:400;">累積 ${cumulativeHoursThrough(s.id, y, m).toFixed(1)} 小時</span>
       </h3>
-      ${monthSched.length ? monthSched.map(sc=>{
+      ${monthSched.filter(sc=>!sc.isCredit).length ? monthSched.filter(sc=>!sc.isCredit).map(sc=>{
         const dow = new Date(sc.date+'T00:00:00').getDay();
         const [yy,mm,dd] = sc.date.split('-');
         return `<div class="sched-item"><span class="sched-when">${Number(mm)}/${Number(dd)}（${dayNames[dow]}）　${formatTimeRange(sc.hour,sc.minute,sc.hours)}・${sc.hours||0}小時</span></div>`;
@@ -2438,6 +2440,32 @@ function addExtraTime(sourceId){
   });
 }
 
+function addTimeCredit(sourceId){
+  const src = state.schedules.find(x=>x.id===sourceId);
+  if(!src) return;
+  showModal(`
+    <h3>退還時數（下月扣抵）</h3>
+    <p style="font-size:13px;color:var(--ink-soft);">用在「這堂已經算進本月費用、家長也繳完了，但實際上課時間比排定的短」的情況——原本那堂完全不動，多收的時數會自動在下個月的費用裡扣掉。</p>
+    <div class="field"><label>實際少上了幾小時</label><input type="number" id="m-credit-hours" step="0.5" min="0.5" value="0.5"></div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" id="m-cancel">取消</button>
+      <button class="btn btn-primary" id="m-save">新增</button>
+    </div>
+  `);
+  $('#m-cancel').addEventListener('click', closeModal);
+  $('#m-save').addEventListener('click', async ()=>{
+    const credit = $('#m-credit-hours').value ? Number($('#m-credit-hours').value) : 0.5;
+    state.schedules.push({
+      id: uid(), studentId: src.studentId, date: src.date,
+      hour: src.hour, minute: src.minute, hours: -credit,
+      excludeFromBilling: true, excludeReason: '退還時數', deferToNextMonth: true, isCredit: true
+    });
+    closeModal();
+    await saveSchedules();
+    render();
+  });
+}
+
 function deleteSchedule(id){
   showModal(`
     <h3>刪除時段</h3>
@@ -2766,11 +2794,12 @@ function renderMain(){
       </div>
       ${state.viewMode==='teacher' ? `<p style="font-size:12px;color:var(--ink-soft);margin:8px 0 0;">👀 家長頁瀏覽 ${state.viewCounts[s.id+'_parent']||0} 次・學生頁瀏覽 ${state.viewCounts[s.id+'_student']||0} 次</p>` : ''}
       <div class="fee-summary">
-        <div class="fee-item"><div class="num">${monthSched.length}</div><div class="lbl">本月堂數</div></div>
+        <div class="fee-item"><div class="num">${monthSched.filter(sc=>!sc.isCredit).length}</div><div class="lbl">本月堂數</div></div>
         <div class="fee-item"><div class="num">${totalHours ? totalHours.toFixed(1) : 0}</div><div class="lbl">本月時數</div></div>
         <div class="fee-item total"><div class="num">${feeInfo.milestone.hit && feeInfo.baseFee!==null ? `<span style="font-size:14px;font-weight:400;color:var(--ink-soft);text-decoration:line-through;margin-right:6px;">$${feeInfo.baseFee.toLocaleString()}</span>$${fee.toLocaleString()}` : (fee!==null ? '$'+fee.toLocaleString() : '—')}</div><div class="lbl">本月學費</div></div>
       </div>
       ${feeInfo.deferredIn>0 ? `<p style="font-size:11px;color:#E8A33D;margin:8px 0 0;">＋含上月遞延 ${feeInfo.deferredIn}小時</p>` : ''}
+      ${feeInfo.deferredIn<0 ? `<p style="font-size:11px;color:#E8A33D;margin:8px 0 0;">－上月退還 ${Math.abs(feeInfo.deferredIn)}小時</p>` : ''}
       ${feeInfo.milestone.hit ? `<p style="font-size:12px;color:var(--teal);margin:8px 0 0;font-weight:600;">🏷️ 累積上課時數達${feeInfo.milestone.milestone}小時，本月學費享9折優惠（折扣 $${feeInfo.discountAmt.toLocaleString()}）</p>` : ''}
       <button id="payBadge" class="pay-badge ${paid?'paid':'unpaid'} ${state.viewMode==='teacher'?'clickable':''}">${paid ? '✅ 學費已收' : '⏳ 學費未收'}</button>
     </div>
@@ -2798,14 +2827,19 @@ function renderMain(){
         const [y,m,d] = sc.date.split('-');
         return `<div class="sched-item" style="align-items:flex-start;">
           <span class="sched-when" style="display:flex;flex-direction:column;">
-            <span>${Number(m)}/${Number(d)}（${dayNames[dow]}）　${formatTimeRange(sc.hour,sc.minute,sc.hours)}・${sc.hours||0}小時</span>
+            <span>${sc.isCredit
+              ? `${Number(m)}/${Number(d)}（${dayNames[dow]}）　📉 退還時數：${Math.abs(sc.hours)}小時`
+              : `${Number(m)}/${Number(d)}（${dayNames[dow]}）　${formatTimeRange(sc.hour,sc.minute,sc.hours)}・${sc.hours||0}小時`}</span>
             ${sc.excludeFromBilling ? `<span style="font-size:11px;color:#E8A33D;margin-top:3px;">⚠️ 不列入本月費用${sc.excludeReason ? '（'+escapeHtml(sc.excludeReason)+'）' : ''}</span>` : ''}
             ${sc.note ? `<span style="font-size:11px;color:var(--teal);margin-top:3px;">📌 ${escapeHtml(sc.note)}</span>` : ''}
           </span>
           ${state.viewMode==='teacher' ? `
             <span style="display:flex;gap:12px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end;">
-              <button data-extra="${sc.id}" style="color:var(--teal)">加時</button>
-              <button data-move="${sc.id}" style="color:var(--ink-soft)">移動</button>
+              ${!sc.isCredit ? `
+                <button data-extra="${sc.id}" style="color:var(--teal)">加時</button>
+                <button data-credit="${sc.id}" style="color:#E8A33D">退還時數</button>
+                <button data-move="${sc.id}" style="color:var(--ink-soft)">移動</button>
+              ` : ''}
               <button data-delsched="${sc.id}">刪除</button>
             </span>` : ''}
         </div>`;
@@ -2890,6 +2924,7 @@ function renderMain(){
       showToast('已儲存本月摘要');
     });
     area.querySelectorAll('[data-extra]').forEach(btn=> btn.addEventListener('click', ()=> addExtraTime(btn.dataset.extra)));
+    area.querySelectorAll('[data-credit]').forEach(btn=> btn.addEventListener('click', ()=> addTimeCredit(btn.dataset.credit)));
     area.querySelectorAll('[data-move]').forEach(btn=> btn.addEventListener('click', ()=> moveSchedule(btn.dataset.move)));
     area.querySelectorAll('[data-delsched]').forEach(btn=> btn.addEventListener('click', ()=> deleteSchedule(btn.dataset.delsched)));
     area.querySelectorAll('[data-edit-exam]').forEach(btn=> btn.addEventListener('click', ()=> editExamItem(btn.dataset.editExam)));
