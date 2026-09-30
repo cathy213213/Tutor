@@ -152,6 +152,7 @@
   .sched-item:first-of-type{border-top:none;}
   .sched-item .sched-when{font-weight:500;}
   .sched-item button{border:none;background:none;font-size:12px;color:var(--red);cursor:pointer;text-decoration:underline;padding:0;}
+  .sched-item.jump-highlight{border:2px solid #7C5CFC;border-radius:8px;background:#F1EEFE;padding:9px 10px;margin:2px 0;transition:background .4s ease;}
   .sched-empty{font-size:13px;color:var(--ink-soft);padding:6px 0;}
   .sched-add-row{display:flex;gap:14px;margin-top:12px;flex-wrap:wrap;}
   .sched-add-row button{border:none;background:none;font-size:13px;color:var(--teal);cursor:pointer;font-weight:500;padding:0;}
@@ -1162,7 +1163,7 @@ function renderStudentView(){
       ${monthSched.filter(sc=>!sc.isCredit).length ? monthSched.filter(sc=>!sc.isCredit).map(sc=>{
         const dow = new Date(sc.date+'T00:00:00').getDay();
         const [yy,mm,dd] = sc.date.split('-');
-        return `<div class="sched-item"><span class="sched-when">${Number(mm)}/${Number(dd)}（${dayNames[dow]}）　${formatTimeRange(sc.hour,sc.minute,sc.hours)}・${sc.hours||0}小時</span></div>`;
+        return `<div class="sched-item" data-date="${sc.date}"><span class="sched-when">${Number(mm)}/${Number(dd)}（${dayNames[dow]}）　${formatTimeRange(sc.hour,sc.minute,sc.hours)}・${sc.hours||0}小時</span></div>`;
       }).join('') : `<div class="sched-empty">這個月尚未排定上課時段</div>`}
     </div>
 
@@ -1192,12 +1193,23 @@ function renderStudentView(){
     if(isToday) classes.push('today');
     if(hasContent) classes.push('has-lesson');
     else if(hasSchedule) classes.push('has-schedule');
+    if(hasSchedule) classes.push('clickable');
     const dot = hasContent ? '<span class="dot"></span>' : (hasSchedule ? '<span class="dot dot-schedule"></span>' : '');
     const examTypes = examTypesForDate(s.id, key);
     const examDots = examTypes.map(()=>`<span class="dot dot-exam"></span>`).join('');
     calHtml += `<div class="${classes.join(' ')}" data-date="${key}"><span>${d}</span><span class="dot-row">${dot}${examDots}</span></div>`;
   }
   $('#stuCalGrid').innerHTML = calHtml;
+  $('#stuCalGrid').querySelectorAll('.day.clickable').forEach(day=>{
+    day.addEventListener('click', ()=>{
+      const target = area.querySelector(`.sched-item[data-date="${day.dataset.date}"]`);
+      if(!target) return;
+      area.querySelectorAll('.sched-item.jump-highlight').forEach(el=>el.classList.remove('jump-highlight'));
+      target.classList.add('jump-highlight');
+      target.scrollIntoView({behavior:'smooth', block:'center'});
+      setTimeout(()=>target.classList.remove('jump-highlight'), 2500);
+    });
+  });
   bindBackToMoreBanner();
 }
 
@@ -2825,7 +2837,7 @@ function renderMain(){
       ${monthSched.length ? monthSched.map(sc=>{
         const dow = new Date(sc.date+'T00:00:00').getDay();
         const [y,m,d] = sc.date.split('-');
-        return `<div class="sched-item" style="align-items:flex-start;">
+        return `<div class="sched-item" data-date="${sc.date}" style="align-items:flex-start;">
           <span class="sched-when" style="display:flex;flex-direction:column;">
             <span>${sc.isCredit
               ? `${Number(m)}/${Number(d)}（${dayNames[dow]}）　📉 退還時數：${Math.abs(sc.hours)}小時`
@@ -2957,7 +2969,7 @@ function renderCalendar(sid){
     if(isToday) classes.push('today');
     if(hasContent) classes.push('has-lesson');
     else if(hasSchedule) classes.push('has-schedule');
-    if(state.viewMode==='teacher' || hasContent) classes.push('clickable');
+    if(state.viewMode==='teacher' || hasContent || hasSchedule) classes.push('clickable');
     if(state.selectedDate===key) classes.push('selected');
     const dot = hasContent ? '<span class="dot"></span>' : (hasSchedule ? '<span class="dot dot-schedule"></span>' : '');
     const examTypes = examTypesForDate(sid, key);
@@ -2976,6 +2988,14 @@ function renderCalendar(sid){
         state.selectedDate = key;
         if(occ.length){ openDayModal(sid, key); }
         else { openForm(existing ? existing.id : null, key); }
+      } else if(occ.length){
+        const target = document.querySelector(`.sched-item[data-date="${key}"]`);
+        if(target){
+          document.querySelectorAll('.sched-item.jump-highlight').forEach(el=>el.classList.remove('jump-highlight'));
+          target.classList.add('jump-highlight');
+          target.scrollIntoView({behavior:'smooth', block:'center'});
+          setTimeout(()=>target.classList.remove('jump-highlight'), 2500);
+        }
       } else if(existing){
         state.selectedDate = key;
         render();
