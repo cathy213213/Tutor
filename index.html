@@ -577,7 +577,19 @@ async function loadData(){
 
 function trackView(key){
   if(!db) return;
-  setDoc(doc(db,'tutorlog','viewCounts'), { [key]: increment(1) }, { merge: true }).catch(()=>{});
+  const today = toKey(new Date());
+  const payload = { [key]: increment(1) };
+  if(state.viewCounts[key+'_date'] === today){
+    payload[key+'_today'] = increment(1);
+  } else {
+    payload[key+'_today'] = 1;
+    payload[key+'_date'] = today;
+  }
+  setDoc(doc(db,'tutorlog','viewCounts'), payload, { merge: true }).catch(()=>{});
+}
+function todayViewCount(key){
+  const today = toKey(new Date());
+  return (state.viewCounts[key+'_date'] === today) ? (state.viewCounts[key+'_today'] || 0) : 0;
 }
 
 function trackViewOncePerDevice(key){
@@ -1226,7 +1238,8 @@ function renderProfileEditor(){
     ${backToMoreBanner()}
     <div class="card">
       <h3 class="section-title">公開介紹頁</h3>
-      <p style="font-size:13px;color:var(--ink-soft);margin:0 0 12px;">👀 累積瀏覽次數：${state.viewCounts.about || 0} 次</p>
+      <p style="font-size:13px;color:var(--ink-soft);margin:0 0 4px;">👀 累積瀏覽次數：${state.viewCounts.about || 0} 次</p>
+      <p style="font-size:12px;color:var(--ink-soft);margin:0 0 12px;">📆 今日預覽次數：${todayViewCount('about')} 次</p>
       <div style="display:flex;gap:12px;flex-wrap:wrap;">
         <button class="btn btn-ghost" id="previewProfileBtn">👀 預覽介紹頁</button>
         <button class="btn btn-primary" id="copyAboutBtn">複製介紹頁連結</button>
@@ -1236,7 +1249,8 @@ function renderProfileEditor(){
     <div class="card">
       <h3 class="section-title">📅 公開行事曆專屬連結</h3>
       <p style="font-size:12px;color:var(--ink-soft);margin:0 0 12px;">獨立的一頁，只有行事曆、沒有其他介紹內容，適合直接傳給家長看有沒有空檔。</p>
-      <p style="font-size:13px;color:var(--ink-soft);margin:0 0 12px;">👀 累積瀏覽次數：${state.viewCounts.calendar || 0} 次</p>
+      <p style="font-size:13px;color:var(--ink-soft);margin:0 0 4px;">👀 累積瀏覽次數：${state.viewCounts.calendar || 0} 次</p>
+      <p style="font-size:12px;color:var(--ink-soft);margin:0 0 12px;">📆 今日預覽次數：${todayViewCount('calendar')} 次</p>
       <div style="display:flex;gap:12px;flex-wrap:wrap;">
         <button class="btn btn-ghost" id="previewCalendarBtn">👀 預覽行事曆</button>
         <button class="btn btn-primary" id="copyCalendarBtn">複製行事曆連結</button>
@@ -2860,7 +2874,8 @@ function renderMain(){
             <button id="delStudentBtn" class="danger">刪除學生</button>
           </div>` : ''}
       </div>
-      ${state.viewMode==='teacher' ? `<p style="font-size:12px;color:var(--ink-soft);margin:8px 0 0;">👀 家長頁瀏覽 ${state.viewCounts[s.id+'_parent']||0} 次・學生頁瀏覽 ${state.viewCounts[s.id+'_student']||0} 次</p>` : ''}
+      ${state.viewMode==='teacher' ? `<p style="font-size:12px;color:var(--ink-soft);margin:8px 0 0;">👀 家長頁瀏覽 ${state.viewCounts[s.id+'_parent']||0} 次・學生頁瀏覽 ${state.viewCounts[s.id+'_student']||0} 次</p>
+      <p style="font-size:11px;color:var(--ink-soft);margin:2px 0 0;">📆 今日：家長頁 ${todayViewCount(s.id+'_parent')} 次・學生頁 ${todayViewCount(s.id+'_student')} 次</p>` : ''}
       <div class="fee-summary">
         <div class="fee-item"><div class="num">${monthSched.filter(sc=>!sc.isCredit).length}</div><div class="lbl">本月堂數</div></div>
         <div class="fee-item"><div class="num">${totalHours ? totalHours.toFixed(1) : 0}</div><div class="lbl">本月時數</div></div>
