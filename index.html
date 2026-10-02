@@ -2478,6 +2478,35 @@ function addTimeCredit(sourceId){
   });
 }
 
+function addManualCredit(sid, year, month){
+  const defaultDate = toKey(new Date(year, month, 1));
+  showModal(`
+    <h3>直接調整下月時數</h3>
+    <p style="font-size:13px;color:var(--ink-soft);">用在跟上課內容無關的情況，例如家長款項匯錯、不小心多匯——不用去改任何一堂課，直接登記要在下個月費用裡扣掉的時數即可。</p>
+    <div class="field"><label>日期（僅作記錄用，會反映在下個月的費用裡）</label><input type="date" id="m-adj-date" value="${defaultDate}"></div>
+    <div class="field"><label>要扣除幾小時</label><input type="number" id="m-adj-hours" step="0.5" min="0.5" value="0.5"></div>
+    <div class="field"><label>備註（選填）</label><input type="text" id="m-adj-note" placeholder="例如：9月學費不小心多匯一次"></div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" id="m-cancel">取消</button>
+      <button class="btn btn-primary" id="m-save">新增</button>
+    </div>
+  `);
+  $('#m-cancel').addEventListener('click', closeModal);
+  $('#m-save').addEventListener('click', async ()=>{
+    const date = $('#m-adj-date').value || defaultDate;
+    const hrs = $('#m-adj-hours').value ? Number($('#m-adj-hours').value) : 0.5;
+    const note = $('#m-adj-note').value.trim();
+    state.schedules.push({
+      id: uid(), studentId: sid, date,
+      hour: 0, minute: 0, hours: -hrs,
+      excludeFromBilling: true, excludeReason: '退還時數', deferToNextMonth: true, isCredit: true, note
+    });
+    closeModal();
+    await saveSchedules();
+    render();
+  });
+}
+
 function deleteSchedule(id){
   showModal(`
     <h3>刪除時段</h3>
@@ -2859,6 +2888,7 @@ function renderMain(){
       ${state.viewMode==='teacher' ? `
         <div class="sched-add-row">
           <button id="addSchedBtn">＋ 新增上課時段</button>
+          <button id="addAdjBtn" style="color:#E8A33D">⚖️ 直接調整下月時數</button>
         </div>` : ''}
     </div>
 
@@ -2918,6 +2948,7 @@ function renderMain(){
     $('#delStudentBtn').addEventListener('click', deleteStudent);
     $('#addTrigger').addEventListener('click', ()=> openForm(null, toKey(new Date())));
     $('#addSchedBtn').addEventListener('click', ()=> addSchedule(s.id));
+    $('#addAdjBtn').addEventListener('click', ()=> addManualCredit(s.id, cy, cm));
     $('#copySummaryTextBtn').addEventListener('click', async ()=>{
       const ta = $('#summaryTextOutput');
       try{
