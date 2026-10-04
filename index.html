@@ -2913,7 +2913,7 @@ function renderMain(){
         return `<div class="sched-item" data-date="${sc.date}" style="align-items:flex-start;">
           <span class="sched-when" style="display:flex;flex-direction:column;">
             <span>${sc.isCredit
-              ? `${Number(m)}/${Number(d)}（${dayNames[dow]}）　📉 退還時數：${Math.abs(sc.hours)}小時`
+              ? `${Number(m)}月註記　📉 退還時數：${Math.abs(sc.hours)}小時`
               : `${Number(m)}/${Number(d)}（${dayNames[dow]}）　${formatTimeRange(sc.hour,sc.minute,sc.hours)}・${sc.hours||0}小時`}</span>
             ${sc.excludeFromBilling ? `<span style="font-size:11px;color:#E8A33D;margin-top:3px;">⚠️ 不列入本月費用${sc.excludeReason ? '（'+escapeHtml(sc.excludeReason)+'）' : ''}</span>` : ''}
             ${sc.note ? `<span style="font-size:11px;color:var(--teal);margin-top:3px;">📌 ${escapeHtml(sc.note)}</span>` : ''}
