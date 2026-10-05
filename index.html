@@ -336,6 +336,9 @@ function applyRouteFromHash(){
   } else if(window.location.hash === '#/calendar-preview'){
     state.lockedCalendar = true;
     state.isPreview = true;
+  } else if(window.location.hash === '#/mycalendar'){
+    state.viewMode = 'teacher';
+    state.teacherTab = 'myCalendar';
   }
 }
 
@@ -885,6 +888,22 @@ function combinedScheduledDatesInMonth(year, month){
   const map = new Map();
   state.schedules.forEach(s=>{ if(s.date.startsWith(prefix)) map.set(s.date, (map.get(s.date)||0)+1); });
   return map;
+}
+function monthCombinedScheduleFull(year, month){
+  const prefix = `${year}-${pad(month+1)}-`;
+  const list = [];
+  state.students.filter(s=>!s.excludeFromOverview).forEach(s=>{
+    state.schedules.filter(sc=>sc.studentId===s.id && !sc.isCredit && sc.date.startsWith(prefix)).forEach(sc=>{
+      list.push({ date: sc.date, studentName: s.name, hour: sc.hour, minute: sc.minute, hours: sc.hours });
+    });
+  });
+  list.sort((a,b)=> a.date.localeCompare(b.date) || (a.hour*60+a.minute)-(b.hour*60+b.minute));
+  return list;
+}
+const KOREA_OFFSET_HOURS = 1;
+function toKoreaTimeRange(hour, minute, hours){
+  const kHour = (hour + KOREA_OFFSET_HOURS) % 24;
+  return formatTimeRange(kHour, minute, hours);
 }
 /* ---------- public (anonymized) availability calendar ---------- */
 function specialClosuresForDate(dateKey){
@@ -2160,6 +2179,110 @@ function renderOverview(){
   });
 }
 
+function renderMyCalendarPage(){
+  const area = $('#mainArea');
+  const y = state.cursor.getFullYear(), m = state.cursor.getMonth();
+  const fullList = monthCombinedScheduleFull(y, m);
+  const byDate = new Map();
+  fullList.forEach(x=>{
+    if(!byDate.has(x.date)) byDate.set(x.date, []);
+    byDate.get(x.date).push(x);
+  });
+
+  area.innerHTML = `
+    ${backToMoreBanner()}
+    <div class="card">
+      <h3 class="section-title">📅 完整月曆（僅自己看）</h3>
+      <p style="font-size:12px;color:var(--ink-soft);margin:0 0 12px;">顯示所有學生的真實姓名與上課時間，時間已自動換算成韓國時間（比台灣快1小時）。這個連結請不要分享給家長或學生。</p>
+      <button class="btn btn-primary" id="copyMyCalBtn">複製這個頁面的專屬網址</button>
+    </div>
+    <div class="card">
+      <div class="cal-head">
+        <div class="cal-nav"><button id="myCalPrev">‹</button></div>
+        <h2>${y} 年 ${m+1} 月</h2>
+        <div class="cal-nav"><button id="myCalNext">›</button></div>
+      </div>
+      <div class="grid7">${dowNames.map(d=>`<div class="dow">${d}</div>`).join('')}</div>
+      <div class="grid7" id="myCalGrid"></div>
+      <div class="legend">
+        <span><i style="background:var(--teal)"></i>有排課</span>
+        <span><i style="background:transparent;border:1px solid var(--red)"></i>今天</span>
+      </div>
+    </div>
+    <div class="card">
+      <h3 class="section-title">${m+1} 月完整課表（韓國時間）</h3>
+      ${byDate.size ? Array.from(byDate.entries()).map(([date, entries])=>{
+        const dow = new Date(date+'T00:00:00').getDay();
+        const [yy,mm,dd] = date.split('-');
+        return `<div class="sched-item" data-date="${date}" style="align-items:flex-start;flex-direction:column;gap:4px;">
+          <span style="font-weight:700;">${Number(mm)}/${Number(dd)}（${dayNames[dow]}）</span>
+          ${entries.map(e=>`<span style="font-size:13px;padding-left:4px;">${toKoreaTimeRange(e.hour,e.minute,e.hours)}・${escapeHtml(e.studentName)}</span>`).join('')}
+        </div>`;
+      }).join('') : `<div class="sched-empty">這個月沒有排定課程</div>`}
+    </div>
+  `;
+
+  $('#myCalPrev').addEventListener('click', ()=>{ state.cursor = new Date(y, m-1, 1); renderMyCalendarPage(); });
+  $('#myCalNext').addEventListener('click', ()=>{ state.cursor = new Date(y, m+1, 1); renderMyCalendarPage(); });
+  $('#copyMyCalBtn').addEventListener('click', copyMyCalendarLink);
+
+  const firstDow = new Date(y, m, 1).getDay();
+  const daysInMonth = new Date(y, m+1, 0).getDate();
+  let calHtml = '';
+  for(let i=0;i<firstDow;i++) calHtml += `<div class="day pad"></div>`;
+  for(let d=1; d<=daysInMonth; d++){
+    const key = toKey(new Date(y, m, d));
+    const hasSchedule = byDate.has(key);
+    const isToday = key === todayKey();
+    const classes = ['day'];
+    if(isToday) classes.push('today');
+    if(hasSchedule) classes.push('has-schedule');
+    if(hasSchedule) classes.push('clickable');
+    calHtml += `<div class="${classes.join(' ')}" data-date="${key}"><span>${d}</span><span class="dot-row">${hasSchedule ? '<span class="dot dot-schedule"></span>' : ''}</span></div>`;
+  }
+  $('#myCalGrid').innerHTML = calHtml;
+  $('#myCalGrid').querySelectorAll('.day.clickable').forEach(day=>{
+    day.addEventListener('click', ()=>{
+      const target = area.querySelector(`.sched-item[data-date="${day.dataset.date}"]`);
+      if(!target) return;
+      area.querySelectorAll('.sched-item.jump-highlight').forEach(el=>el.classList.remove('jump-highlight'));
+      target.classList.add('jump-highlight');
+      target.scrollIntoView({behavior:'smooth', block:'center'});
+      setTimeout(()=>target.classList.remove('jump-highlight'), 2500);
+    });
+  });
+  bindBackToMoreBanner();
+}
+
+async function copyMyCalendarLink(){
+  const base = getBaseUrl();
+  if(!base){
+    showModal(`
+      <h3>目前無法產生連結</h3>
+      <p>這個畫面現在是 Claude 對話裡的預覽模式，沒有真正的網址。請先把這個頁面發布到一個真正的網址，再從那個網址打開這個工具，這個按鈕才會正常運作。</p>
+      <div class="modal-actions"><button class="btn btn-primary" id="m-close">了解</button></div>
+    `);
+    $('#m-close').addEventListener('click', closeModal);
+    return;
+  }
+  const url = `${base}#/mycalendar`;
+  try{
+    await navigator.clipboard.writeText(url);
+    showToast('完整月曆連結已複製');
+  }catch(e){
+    showModal(`
+      <h3>完整月曆專屬連結</h3>
+      <p>請手動選取並複製以下網址：</p>
+      <div class="link-box"><input type="text" id="m-link" value="${url}" readonly></div>
+      <div class="modal-actions"><button class="btn btn-primary" id="m-close">關閉</button></div>
+    `);
+    const input = $('#m-link');
+    input.focus();
+    input.select();
+    $('#m-close').addEventListener('click', closeModal);
+  }
+}
+
 /* ---------- render: student tabs ---------- */
 function renderTabs(){
   const wrap = $('#studentTabs');
@@ -3288,7 +3411,7 @@ function renderModeUI(){
 }
 
 function updateNavActiveState(){
-  const activeTab = (state.teacherTab==='profile' || state.teacherTab==='incomeChart') ? 'more' : state.teacherTab;
+  const activeTab = (state.teacherTab==='profile' || state.teacherTab==='incomeChart' || state.teacherTab==='myCalendar') ? 'more' : state.teacherTab;
   document.querySelectorAll('.nav-btn').forEach(btn=>{
     btn.classList.toggle('active', btn.dataset.tab === activeTab);
   });
@@ -3437,6 +3560,7 @@ function renderMoreTab(){
     <div class="card">
       <div class="sched-item" style="cursor:pointer;" id="moreProfileEdit"><span class="sched-when">👩🏻‍🏫老師介紹</span><span style="color:var(--ink-soft);">›</span></div>
       <div class="sched-item" style="cursor:pointer;" id="moreCalPreview"><span class="sched-when">📅 公開行事曆預覽</span><span style="color:var(--ink-soft);">›</span></div>
+      <div class="sched-item" style="cursor:pointer;" id="moreMyCalendar"><span class="sched-when">📅 完整月曆（自己看，韓國時間）</span><span style="color:var(--ink-soft);">›</span></div>
       <div class="sched-item" style="cursor:pointer;" id="moreIncomeChart"><span class="sched-when">📊 收入總表</span><span style="color:var(--ink-soft);">›</span></div>
       <div class="sched-item" style="cursor:pointer;" id="moreParentPreview"><span class="sched-when">👩🏻家長預覽</span><span style="color:var(--ink-soft);">›</span></div>
       <div class="sched-item" style="cursor:pointer;" id="moreStudentPreview"><span class="sched-when">👧🏻學生預覽</span><span style="color:var(--ink-soft);">›</span></div>
@@ -3450,6 +3574,7 @@ function renderMoreTab(){
   `;
   $('#moreProfileEdit').addEventListener('click', ()=>{ state.teacherTab='profile'; render(); });
   $('#moreCalPreview').addEventListener('click', previewCalendarLink);
+  $('#moreMyCalendar').addEventListener('click', ()=> goToTab('myCalendar'));
   $('#moreIncomeChart').addEventListener('click', ()=>{ state.teacherTab='incomeChart'; render(); });
   $('#moreParentPreview').addEventListener('click', ()=> pickStudentForPreview('parent'));
   $('#moreStudentPreview').addEventListener('click', ()=> pickStudentForPreview('student'));
@@ -3557,6 +3682,7 @@ function render(){
     case 'more': renderMoreTab(); break;
     case 'profile': renderProfileEditor(); break;
     case 'incomeChart': renderIncomeChart(); break;
+    case 'myCalendar': renderMyCalendarPage(); break;
     case 'course':
       if(!state.currentStudentId && state.students.length) state.currentStudentId = state.students[0].id;
       renderMain();
