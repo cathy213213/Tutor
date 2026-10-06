@@ -152,6 +152,7 @@
   .sched-item:first-of-type{border-top:none;}
   .sched-item .sched-when{font-weight:500;}
   .sched-item button{border:none;background:none;font-size:12px;color:var(--red);cursor:pointer;text-decoration:underline;padding:0;}
+  .sched-item.today-mark{border:1px solid var(--red);border-radius:8px;padding:9px 10px;margin:2px 0;}
   .sched-item.jump-highlight{border:2px solid #7C5CFC;border-radius:8px;background:#F1EEFE;padding:9px 10px;margin:2px 0;transition:background .4s ease;}
   .sched-empty{font-size:13px;color:var(--ink-soft);padding:6px 0;}
   .sched-add-row{display:flex;gap:14px;margin-top:12px;flex-wrap:wrap;}
@@ -2214,7 +2215,7 @@ function renderMyCalendarPage(){
       ${byDate.size ? Array.from(byDate.entries()).map(([date, entries])=>{
         const dow = new Date(date+'T00:00:00').getDay();
         const [yy,mm,dd] = date.split('-');
-        return `<div class="sched-item" data-date="${date}" style="align-items:flex-start;flex-direction:column;gap:4px;">
+        return `<div class="sched-item${date===todayKey() ? ' today-mark' : ''}" data-date="${date}" style="align-items:flex-start;flex-direction:column;gap:4px;">
           <span style="font-weight:700;">${Number(mm)}/${Number(dd)}（${dayNames[dow]}）</span>
           ${entries.map(e=>`<span style="font-size:13px;padding-left:4px;">${toKoreaTimeRange(e.hour,e.minute,e.hours)}・${escapeHtml(e.studentName)}</span>`).join('')}
         </div>`;
