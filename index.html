@@ -2252,6 +2252,15 @@ function renderMyCalendarPage(){
     });
   });
   bindBackToMoreBanner();
+
+  // land on today-or-later automatically; earlier days in the month are still
+  // reachable by tapping their date on the calendar above
+  const todayStr = todayKey();
+  let landTarget = null;
+  for(const date of byDate.keys()){
+    if(date >= todayStr){ landTarget = area.querySelector(`.sched-item[data-date="${date}"]`); break; }
+  }
+  if(landTarget) landTarget.scrollIntoView({behavior:'auto', block:'start'});
 }
 
 async function copyMyCalendarLink(){
