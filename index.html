@@ -2108,14 +2108,11 @@ function renderOverview(){
 
   area.innerHTML = `
     <div class="card">
-      <div class="cal-head">
+      <div class="cal-head" style="margin-bottom:0;">
         <div class="cal-nav"><button id="ovPrev">‹</button></div>
-        <h2>${y} 年 ${m+1} 月・全部學生</h2>
+        <h2>${y} 年 ${m+1} 月・總覽</h2>
         <div class="cal-nav"><button id="ovNext">›</button></div>
       </div>
-      <div class="grid7">${dowNames.map(d=>`<div class="dow">${d}</div>`).join('')}</div>
-      <div class="ov-grid7" id="ovCalGrid"></div>
-      <div class="legend"><span><i style="background:transparent;border:1px solid var(--red)"></i>今天</span></div>
     </div>
 
     <div class="card">
@@ -2166,38 +2163,6 @@ function renderOverview(){
 
   $('#ovPrev').addEventListener('click', ()=>{ state.cursor = new Date(y, m-1, 1); renderOverview(); });
   $('#ovNext').addEventListener('click', ()=>{ state.cursor = new Date(y, m+1, 1); renderOverview(); });
-
-  const firstDow = new Date(y, m, 1).getDay();
-  const daysInMonth = new Date(y, m+1, 0).getDate();
-  let html = '';
-  for(let i=0;i<firstDow;i++) html += `<div class="ov-day pad"></div>`;
-  for(let d=1; d<=daysInMonth; d++){
-    const key = toKey(new Date(y, m, d));
-    const list = combinedOccurrencesForDate(key);
-    const isToday = key === todayKey();
-    const classes = ['ov-day'];
-    if(isToday) classes.push('today');
-    if(list.length) classes.push('clickable');
-    html += `<div class="${classes.join(' ')}" data-date="${key}">
-      <span class="ov-num">${d}</span>
-      ${list.map(x=>`<span class="ov-entry">${escapeHtml(x.studentName)}${x.time}</span>`).join('')}
-    </div>`;
-  }
-  $('#ovCalGrid').innerHTML = html;
-  $('#ovCalGrid').querySelectorAll('[data-date]').forEach(el=>{
-    el.addEventListener('click', ()=>{
-      const key = el.dataset.date;
-      const list = combinedOccurrencesForDate(key);
-      if(!list.length) return;
-      const [yy,mm,dd] = key.split('-');
-      showModal(`
-        <h3>${Number(mm)}/${Number(dd)} 的課</h3>
-        ${list.map(x=>`<div class="sched-item"><span class="sched-when">${x.time}　${escapeHtml(x.studentName)}</span></div>`).join('')}
-        <div class="modal-actions"><button class="btn btn-primary" id="m-close">關閉</button></div>
-      `);
-      $('#m-close').addEventListener('click', closeModal);
-    });
-  });
 }
 
 let myCalView = 'week';
@@ -2360,7 +2325,7 @@ function renderMyWeekView(){
         <h2>${first.getMonth()+1}/${first.getDate()} – ${last.getMonth()+1}/${last.getDate()}</h2>
         <div class="cal-nav"><button id="wkNext">›</button></div>
       </div>
-      <div style="text-align:center;font-size:12px;color:var(--ink-soft);margin:-6px 0 10px;">${first.getFullYear()} 年・韓國時間　<button class="add-trigger" id="wkToday" style="margin:0;font-size:12px;">回到本週</button></div>
+      <div style="text-align:center;font-size:12px;color:var(--ink-soft);margin:-6px 0 10px;">${first.getFullYear()} 年・韓國時間・<b style="color:var(--ink);">本週共 ${(Math.round(events.reduce((a,e)=>a+(e.end-e.start),0)/60*100)/100)} 小時</b>　<button class="add-trigger" id="wkToday" style="margin:0;font-size:12px;">回到本週</button></div>
       <div class="wk-head">
         <div class="wk-corner"></div>
         ${dates.map((d,i)=>`<div class="wk-head-cell${keys[i]===todayStr ? ' today' : ''}"><div>${dowNames[i]}</div><div class="wk-date">${d.getMonth()+1}/${d.getDate()}</div></div>`).join('')}
@@ -3621,7 +3586,7 @@ function renderModeUI(){
         : state.lockedStudent
           ? (s ? `${s.name} 同學專屬頁面` : '找不到這位學生')
           : (state.viewMode==='teacher'
-            ? `共 ${state.students.length} 位學生・點選日曆日期即可新增或編輯`
+            ? `共 ${state.students.length} 位學生`
             : state.viewMode==='parent'
               ? (s ? `目前檢視：${s.name}` : '請選擇學生')
               : (s ? `學生檢視預覽：${s.name}` : '請選擇學生'));
