@@ -358,6 +358,7 @@ function applyRouteFromHash(){
     state.lockedCalendar = true;
     state.isPreview = true;
   } else if(window.location.hash === '#/mycalendar'){
+    state.myCalDirect = true;
     state.viewMode = 'teacher';
     state.teacherTab = 'myCalendar';
   }
@@ -2262,7 +2263,7 @@ function layoutDayEvents(evs){
 
 function myCalHeaderHtml(){
   return `
-    ${backToMoreBanner()}
+    ${state.myCalDirect ? '' : backToMoreBanner()}
     <div class="card">
       <h3 class="section-title">📅 完整月曆（僅自己看）</h3>
       <p style="font-size:12px;color:var(--ink-soft);margin:0 0 12px;">顯示所有學生的真實姓名與上課時間，時間已自動換算成韓國時間（比台灣快1小時）。這個連結請不要分享給家長或學生。</p>
@@ -3608,15 +3609,18 @@ function renderModeUI(){
   const ABOUT_TITLE = '柏萱老師👩🏻\u200d🏫 ｜高中數學教師';
   const DEFAULT_TITLE = '數學家教紀錄📝';
   const CAL_TITLE = '上課時段預覽📅';
-  const shownTitle = state.lockedProfile ? ABOUT_TITLE : (state.lockedCalendar ? CAL_TITLE : DEFAULT_TITLE);
+  const isMyCal = !state.lockedProfile && !state.lockedCalendar && !state.lockedParent && !state.lockedStudent && state.viewMode==='teacher' && state.teacherTab==='myCalendar';
+  const shownTitle = isMyCal ? '完整課表📅' : state.lockedProfile ? ABOUT_TITLE : (state.lockedCalendar ? CAL_TITLE : DEFAULT_TITLE);
   $('#mainTitle').textContent = shownTitle;
   document.title = shownTitle;
   const prof = state.profile || {};
   const ABOUT_TAGLINE = prof.aboutTagline || DEFAULT_ABOUT_TAGLINE;
   const DEFAULT_TAGLINE = prof.appTagline || DEFAULT_APP_TAGLINE;
-  $('#encourageText').textContent = state.lockedProfile ? ABOUT_TAGLINE : (state.lockedCalendar ? '' : DEFAULT_TAGLINE);
+  $('#encourageText').textContent = isMyCal ? '' : state.lockedProfile ? ABOUT_TAGLINE : (state.lockedCalendar ? '' : DEFAULT_TAGLINE);
   const s = currentStudent();
-  $('#subline').textContent = state.lockedProfile
+  $('#subline').textContent = isMyCal
+    ? '僅自己看・韓國時間'
+    : state.lockedProfile
     ? '老師介紹頁'
     : state.lockedCalendar
       ? '公開行事曆'
@@ -3781,7 +3785,7 @@ function renderMoreTab(){
     <div class="card">
       <div class="sched-item" style="cursor:pointer;" id="moreProfileEdit"><span class="sched-when">👩🏻‍🏫老師介紹</span><span style="color:var(--ink-soft);">›</span></div>
       <div class="sched-item" style="cursor:pointer;" id="moreCalPreview"><span class="sched-when">📅 公開行事曆預覽</span><span style="color:var(--ink-soft);">›</span></div>
-      <div class="sched-item" style="cursor:pointer;" id="moreMyCalendar"><span class="sched-when">📅 完整月曆（自己看，韓國時間）</span><span style="color:var(--ink-soft);">›</span></div>
+      <div class="sched-item" style="cursor:pointer;" id="moreMyCalendar"><span class="sched-when">📅 完整月曆預覽（自己看，韓國時間）</span><span style="color:var(--ink-soft);">›</span></div>
       <div class="sched-item" style="cursor:pointer;" id="moreIncomeChart"><span class="sched-when">📊 收入總表</span><span style="color:var(--ink-soft);">›</span></div>
       <div class="sched-item" style="cursor:pointer;" id="moreParentPreview"><span class="sched-when">👩🏻家長預覽</span><span style="color:var(--ink-soft);">›</span></div>
       <div class="sched-item" style="cursor:pointer;" id="moreStudentPreview"><span class="sched-when">👧🏻學生預覽</span><span style="color:var(--ink-soft);">›</span></div>
@@ -3795,7 +3799,11 @@ function renderMoreTab(){
   `;
   $('#moreProfileEdit').addEventListener('click', ()=>{ state.teacherTab='profile'; render(); });
   $('#moreCalPreview').addEventListener('click', previewCalendarLink);
-  $('#moreMyCalendar').addEventListener('click', ()=> goToTab('myCalendar'));
+  $('#moreMyCalendar').addEventListener('click', ()=>{
+    const base = getBaseUrl();
+    if(!base){ goToTab('myCalendar'); return; }
+    window.open(`${base}#/mycalendar`, '_blank');
+  });
   $('#moreIncomeChart').addEventListener('click', ()=>{ state.teacherTab='incomeChart'; render(); });
   $('#moreParentPreview').addEventListener('click', ()=> pickStudentForPreview('parent'));
   $('#moreStudentPreview').addEventListener('click', ()=> pickStudentForPreview('student'));
@@ -3892,7 +3900,8 @@ function render(){
   }
 
   $('#studentTabs').style.display = 'none';
-  $('#bottomNav').style.display = 'flex';
+  const standalone = state.viewMode==='teacher' && state.teacherTab==='myCalendar';
+  $('#bottomNav').style.display = standalone ? 'none' : 'flex';
   updateNavActiveState();
 
   if(state.viewMode==='parent'){ renderMain(); return; }
