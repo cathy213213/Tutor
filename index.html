@@ -160,8 +160,12 @@
   .wk-body{display:flex;position:relative;}
   .wk-times{width:34px;flex-shrink:0;position:relative;}
   .wk-label{position:absolute;right:4px;transform:translateY(-6px);font-size:9.5px;color:var(--ink-soft);}
-  .wk-col{flex:1;min-width:0;position:relative;border-left:1px solid var(--line);background-image:linear-gradient(var(--line) 1px, transparent 1px);background-size:100% 48px;}
+  .wk-col{flex:1;min-width:0;position:relative;border-left:1px solid var(--line);}
   .wk-col.today{background-color:rgba(193,68,60,0.06);}
+  .wk-line{position:absolute;left:0;right:0;height:1px;background:var(--line);}
+  .wk-gap{position:absolute;left:0;right:0;background:repeating-linear-gradient(135deg,#F3F5F8,#F3F5F8 6px,#E9EDF2 6px,#E9EDF2 12px);border-top:1px solid var(--line);border-bottom:1px solid var(--line);}
+  .wk-gap-label{position:absolute;left:34px;right:0;display:flex;align-items:center;justify-content:center;pointer-events:none;}
+  .wk-gap-label span{font-size:10px;color:var(--ink-soft);background:rgba(255,255,255,0.9);padding:1px 8px;border-radius:999px;}
   .wk-block{position:absolute;box-sizing:border-box;border:1px solid;border-radius:6px;padding:3px 3px;overflow:hidden;line-height:1.25;}
   .wk-block{cursor:pointer;}
   .wk-block.narrow .wk-time{display:none;}
@@ -2293,21 +2297,51 @@ function renderMyWeekView(){
     maxH = Math.min(24, Math.ceil(Math.max(...events.map(e=>Math.min(e.end,1440)))/60));
     if(maxH <= minH) maxH = minH + 1;
   }
-  const H = (maxH-minH)*WK_HOUR_PX;
+  // collapse runs of 2+ empty hours (no lesson any day this week) into a thin band
+  const occupied = {};
+  events.forEach(e=>{
+    for(let h=Math.floor(e.start/60); h<Math.ceil(Math.min(e.end,1440)/60); h++) occupied[h] = true;
+  });
+  const GAP_PX = 26;
+  const segs = [];
+  for(let h=minH; h<maxH; ){
+    if(occupied[h]){ segs.push({a:h, b:h+1, gap:false}); h++; continue; }
+    let j = h; while(j<maxH && !occupied[j]) j++;
+    if(j-h >= 2) segs.push({a:h, b:j, gap:true});
+    else for(let k=h;k<j;k++) segs.push({a:k, b:k+1, gap:false});
+    h = j;
+  }
+  let acc = 0;
+  segs.forEach(s=>{ s.y = acc; s.px = s.gap ? GAP_PX : (s.b-s.a)*WK_HOUR_PX; acc += s.px; });
+  const H = acc;
+  const yOf = (min)=>{
+    for(const s of segs){
+      if(min >= s.a*60 && min <= s.b*60){
+        return s.gap ? s.y + (min-s.a*60)/((s.b-s.a)*60)*s.px : s.y + (min-s.a*60)/60*WK_HOUR_PX;
+      }
+    }
+    return H;
+  };
   const todayStr = todayKey();
   const first = dates[0], last = dates[6];
 
   const labels = [];
-  for(let h=minH; h<=maxH; h++){
-    labels.push(`<div class="wk-label" style="top:${(h-minH)*WK_HOUR_PX}px;">${pad(h)}:00</div>`);
-  }
+  const lines = [];
+  segs.forEach(s=>{
+    labels.push(`<div class="wk-label" style="top:${s.y}px;">${pad(s.a)}:00</div>`);
+    if(!s.gap) lines.push(`<div class="wk-line" style="top:${s.y}px;"></div>`);
+  });
+  labels.push(`<div class="wk-label" style="top:${H}px;">${pad(maxH)}:00</div>`);
+  lines.push(`<div class="wk-line" style="top:${H}px;"></div>`);
+  const gapBands = segs.filter(s=>s.gap).map(s=>`<div class="wk-gap" style="top:${s.y}px;height:${s.px}px;"></div>`).join('');
+  const gapLabels = segs.filter(s=>s.gap).map(s=>`<div class="wk-gap-label" style="top:${s.y}px;height:${s.px}px;"><span>${pad(s.a)}:00–${pad(s.b)}:00 無課</span></div>`).join('');
   const wkShown = [];
   const cols = keys.map(k=>{
     const evs = layoutDayEvents(events.filter(e=>e.date===k));
     const blocks = evs.map(e=>{
       const col = studentColor(e.sid);
-      const top = (e.start - minH*60)/60*WK_HOUR_PX;
-      const height = (Math.min(e.end, maxH*60) - e.start)/60*WK_HOUR_PX - 2;
+      const top = yOf(e.start);
+      const height = yOf(Math.min(e.end, maxH*60)) - yOf(e.start) - 2;
       const w = 100/e.lanes, l = e.lane*w;
       wkShown.push(e);
       return `<div class="wk-block${e.lanes>1 ? ' narrow' : ''}" data-eid="${wkShown.length-1}" style="top:${top}px;height:${height}px;left:calc(${l}% + 1px);width:calc(${w}% - 2px);background:${col.bg};border-color:${col.border};">
@@ -2315,7 +2349,7 @@ function renderMyWeekView(){
         <div class="wk-time">${toKoreaTimeRange(e.hour,e.minute,e.hours)}</div>
       </div>`;
     }).join('');
-    return `<div class="wk-col${k===todayStr ? ' today' : ''}" style="height:${H}px;">${blocks}</div>`;
+    return `<div class="wk-col${k===todayStr ? ' today' : ''}" style="height:${H}px;">${lines.join('')}${gapBands}${blocks}</div>`;
   }).join('');
 
   area.innerHTML = `
@@ -2334,6 +2368,7 @@ function renderMyWeekView(){
       <div class="wk-body">
         <div class="wk-times" style="height:${H}px;">${labels.join('')}</div>
         ${cols}
+        ${gapLabels}
       </div>
       ${events.length ? '' : '<div class="sched-empty" style="text-align:center;">這一週沒有排定課程</div>'}
     </div>
