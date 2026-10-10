@@ -2087,6 +2087,7 @@ function renderOverview(){
   const summary = allStudentsMonthSummary(y, m);
   const totalHours = summary.reduce((sum,x)=> sum + x.hours, 0);
   const totalFee = summary.reduce((sum,x)=> sum + (x.fee||0), 0);
+  const activeStudents = summary.filter(x=> x.hours>0).length;
 
   // aggregate class/hour progress + paid/unpaid totals across all (non-excluded) students
   const todayStr = todayKey();
@@ -2114,6 +2115,7 @@ function renderOverview(){
         <h2>${y} 年 ${m+1} 月・總覽</h2>
         <div class="cal-nav"><button id="ovNext">›</button></div>
       </div>
+      <div style="text-align:center;font-size:14px;color:var(--ink-soft);margin-top:8px;">👩‍🎓 本月學生 <b style="color:var(--ink);font-size:16px;">${activeStudents}</b> 位</div>
     </div>
 
     <div class="card">
@@ -2154,7 +2156,7 @@ function renderOverview(){
     </div>
 
     <div class="card">
-      <h3 class="section-title">每位學生本月時數與學費</h3>
+      <h3 class="section-title">每位學生本月時數與學費（${activeStudents} 位）</h3>
       ${summary.length ? summary.map(x=>`
         <div class="sched-item">
           <span class="sched-when">${escapeHtml(x.name)}　${x.hours ? x.hours.toFixed(1) : 0} 小時</span>
