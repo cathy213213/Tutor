@@ -84,9 +84,9 @@
   .no-save{-webkit-touch-callout:none;-webkit-user-select:none;user-select:none;}
   .lightbox-backdrop{position:fixed;inset:0;background:rgba(0,0,0,0.9);z-index:100;display:flex;align-items:center;justify-content:center;padding:24px;}
   .lightbox-backdrop img{max-width:100%;max-height:100%;border-radius:8px;}
-  .guide-lightbox{display:block;padding:0;}
-  .guide-lightbox .guide-scroll{position:absolute;inset:0;overflow:auto;-webkit-overflow-scrolling:touch;padding:56px 8px 24px;}
-  .guide-lightbox .guide-scroll img{max-width:none;max-height:none;width:210vw;height:auto;display:block;}
+  .guide-lightbox{padding:56px 8px 40px;}
+  .guide-lightbox img{max-width:100%;max-height:100%;width:auto;height:auto;object-fit:contain;touch-action:pinch-zoom;}
+  .guide-lightbox .guide-hint{position:fixed;bottom:12px;left:0;right:0;text-align:center;color:#fff;font-size:12px;opacity:0.8;pointer-events:none;}
   .guide-lightbox .guide-close{position:fixed;top:12px;right:12px;z-index:2;width:40px;height:40px;border-radius:50%;border:none;background:#fff;font-size:18px;cursor:pointer;}
 
   .cal-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;}
@@ -1973,8 +1973,9 @@ function openGuideLightbox(url){
   if(!url) return;
   const div = document.createElement('div');
   div.className = 'lightbox-backdrop guide-lightbox';
-  div.innerHTML = `<button class="guide-close" aria-label="關閉">✕</button><div class="guide-scroll"><img src="${url}" class="no-save" draggable="false" oncontextmenu="return false;"></div>`;
+  div.innerHTML = `<button class="guide-close" aria-label="關閉">✕</button><img src="${url}" class="no-save" draggable="false" oncontextmenu="return false;"><div class="guide-hint">雙指可放大查看細節</div>`;
   div.querySelector('.guide-close').addEventListener('click', ()=> div.remove());
+  div.addEventListener('click', (e)=>{ if(e.target===div) div.remove(); });
   document.body.appendChild(div);
 }
 function bindLightboxImages(root){
