@@ -133,6 +133,7 @@
   .ov-day.today{border-color:var(--red);}
   .ov-day .ov-num{font-size:11px;font-weight:700;color:var(--ink);margin-bottom:2px;}
   .ov-day .ov-entry{font-size:9.5px;line-height:1.35;color:var(--teal);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;width:100%;}
+  .ov-day .ov-entry2{white-space:normal;margin-bottom:2px;}
   .pub-day{border-radius:8px;border:1px solid transparent;padding:4px 3px;min-height:56px;display:flex;flex-direction:column;align-items:flex-start;overflow:hidden;cursor:default;}
   .pub-day.has-busy{cursor:pointer;}
   .pub-day.today{border-color:var(--red);}
@@ -2525,9 +2526,8 @@ function renderMyCalendarPage(){
         <div class="cal-nav"><button id="myCalNext">›</button></div>
       </div>
       <div class="grid7">${dowNames.map(d=>`<div class="dow">${d}</div>`).join('')}</div>
-      <div class="grid7" id="myCalGrid"></div>
+      <div class="ov-grid7" id="myCalGrid"></div>
       <div class="legend">
-        <span><i style="background:var(--teal)"></i>有排課</span>
         <span><i style="background:transparent;border:1px solid var(--red)"></i>今天</span>
       </div>
     </div>
@@ -2551,26 +2551,32 @@ function renderMyCalendarPage(){
   const firstDow = new Date(y, m, 1).getDay();
   const daysInMonth = new Date(y, m+1, 0).getDate();
   let calHtml = '';
-  for(let i=0;i<firstDow;i++) calHtml += `<div class="day pad"></div>`;
+  for(let i=0;i<firstDow;i++) calHtml += `<div class="ov-day pad"></div>`;
   for(let d=1; d<=daysInMonth; d++){
     const key = toKey(new Date(y, m, d));
-    const hasSchedule = byDate.has(key);
-    const isToday = key === todayKey();
-    const classes = ['day'];
-    if(isToday) classes.push('today');
-    if(hasSchedule) classes.push('has-schedule');
-    if(hasSchedule) classes.push('clickable');
-    calHtml += `<div class="${classes.join(' ')}" data-date="${key}"><span>${d}</span><span class="dot-row">${hasSchedule ? '<span class="dot dot-schedule"></span>' : ''}</span></div>`;
+    const list = byDate.get(key) || [];
+    const classes = ['ov-day'];
+    if(key === todayKey()) classes.push('today');
+    if(list.length) classes.push('clickable');
+    calHtml += `<div class="${classes.join(' ')}" data-date="${key}">
+      <span class="ov-num">${d}</span>
+      ${list.map(e=>`<span class="ov-entry ov-entry2">${toKoreaTimeRange(e.hour,e.minute,e.hours).split('-')[0]}<br>${escapeHtml(e.studentName)}</span>`).join('')}
+    </div>`;
   }
   $('#myCalGrid').innerHTML = calHtml;
-  $('#myCalGrid').querySelectorAll('.day.clickable').forEach(day=>{
+  $('#myCalGrid').querySelectorAll('.ov-day.clickable').forEach(day=>{
     day.addEventListener('click', ()=>{
-      const target = area.querySelector(`.sched-item[data-date="${day.dataset.date}"]`);
-      if(!target) return;
-      area.querySelectorAll('.sched-item.jump-highlight').forEach(el=>el.classList.remove('jump-highlight'));
-      target.classList.add('jump-highlight');
-      target.scrollIntoView({behavior:'smooth', block:'center'});
-      setTimeout(()=>target.classList.remove('jump-highlight'), 2500);
+      const key = day.dataset.date;
+      const list = byDate.get(key) || [];
+      if(!list.length) return;
+      const [yy,mm,dd] = key.split('-');
+      const dow = new Date(key+'T00:00:00').getDay();
+      showModal(`
+        <h3>${Number(mm)}/${Number(dd)}（${dayNames[dow]}）的課・韓國時間</h3>
+        ${list.map(e=>`<div class="sched-item"><span class="sched-when">${toKoreaTimeRange(e.hour,e.minute,e.hours)}　${escapeHtml(e.studentName)}</span></div>`).join('')}
+        <div class="modal-actions"><button class="btn btn-primary" id="m-close">關閉</button></div>
+      `);
+      $('#m-close').addEventListener('click', closeModal);
     });
   });
 
