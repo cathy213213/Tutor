@@ -1265,7 +1265,7 @@ function renderStudentView(){
     if(hasContent) classes.push('has-lesson');
     else if(hasSchedule) classes.push('has-schedule');
     if(hasSchedule) classes.push('clickable');
-    const dot = hasContent ? '<span class="dot"></span>' : (hasSchedule ? '<span class="dot dot-schedule"></span>' : '');
+    const dot = '';
     const examTypes = examTypesForDate(s.id, key);
     const examDots = examTypes.map(()=>`<span class="dot dot-exam"></span>`).join('');
     const tm = dayTimesHtml(s.id, key);
@@ -3415,7 +3415,7 @@ function renderCalendar(sid){
     else if(hasSchedule) classes.push('has-schedule');
     if(state.viewMode==='teacher' || hasContent || hasSchedule) classes.push('clickable');
     if(state.selectedDate===key) classes.push('selected');
-    const dot = hasContent ? '<span class="dot"></span>' : (hasSchedule ? '<span class="dot dot-schedule"></span>' : '');
+    const dot = '';
     const examTypes = examTypesForDate(sid, key);
     const examDots = examTypes.map(()=>`<span class="dot dot-exam"></span>`).join('');
     const tm = dayTimesHtml(sid, key);
