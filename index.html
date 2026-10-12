@@ -1111,7 +1111,7 @@ function renderPublicCalendarCard(){
   const latest = latestScheduledMonth();
   const now = new Date();
   const atStart = (y*12+m) <= (now.getFullYear()*12+now.getMonth());
-  const atEnd = (y*12+m) >= (latest.y*12+latest.m);
+  const atEnd = (y*12+m) >= (now.getFullYear()*12+now.getMonth());
   let calHtml = '';
   for(let i=0;i<firstDow;i++) calHtml += `<div class="pub-day pad"></div>`;
   for(let d=1; d<=daysInMonth; d++){
@@ -2173,8 +2173,8 @@ function bindPublicCalendarNav(){
   });
   $('#pubCalNext').addEventListener('click', ()=>{
     const y = state.cursor.getFullYear(), m = state.cursor.getMonth();
-    const latest = latestScheduledMonth();
-    if((y*12+m) >= (latest.y*12+latest.m)) return;
+    const now = new Date();
+    if((y*12+m) >= (now.getFullYear()*12+now.getMonth())) return;
     state.cursor = new Date(y, m+1, 1);
     render();
   });
