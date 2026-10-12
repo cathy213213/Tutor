@@ -2531,17 +2531,6 @@ function renderMyCalendarPage(){
         <span><i style="background:transparent;border:1px solid var(--red)"></i>今天</span>
       </div>
     </div>
-    <div class="card">
-      <h3 class="section-title">${m+1} 月完整課表（韓國時間）</h3>
-      ${byDate.size ? Array.from(byDate.entries()).map(([date, entries])=>{
-        const dow = new Date(date+'T00:00:00').getDay();
-        const [yy,mm,dd] = date.split('-');
-        return `<div class="sched-item${date===todayKey() ? ' today-mark' : ''}" data-date="${date}" style="align-items:flex-start;flex-direction:column;gap:4px;">
-          <span style="font-weight:700;">${Number(mm)}/${Number(dd)}（${dayNames[dow]}）</span>
-          ${entries.map(e=>`<span style="font-size:13px;padding-left:4px;">${toKoreaTimeRange(e.hour,e.minute,e.hours)}・${escapeHtml(e.studentName)}</span>`).join('')}
-        </div>`;
-      }).join('') : `<div class="sched-empty">這個月沒有排定課程</div>`}
-    </div>
   `;
 
   $('#myCalPrev').addEventListener('click', ()=>{ state.cursor = new Date(y, m-1, 1); renderMyCalendarPage(); });
@@ -2580,14 +2569,6 @@ function renderMyCalendarPage(){
     });
   });
 
-  // land on today-or-later automatically; earlier days in the month are still
-  // reachable by tapping their date on the calendar above
-  const todayStr = todayKey();
-  let landTarget = null;
-  for(const date of byDate.keys()){
-    if(date >= todayStr){ landTarget = area.querySelector(`.sched-item[data-date="${date}"]`); break; }
-  }
-  if(landTarget) landTarget.scrollIntoView({behavior:'auto', block:'start'});
 }
 
 async function copyMyCalendarLink(){
