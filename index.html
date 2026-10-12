@@ -708,6 +708,27 @@ async function uploadImage(file, folder){
 }
 
 function currentStudent(){ return state.students.find(s=>s.id===state.currentStudentId) || null; }
+function earliestMonthIdx(sid){
+  const ls = state.lessons.filter(l=>l.studentId===sid && l.date).map(l=>l.date).sort();
+  if(!ls.length) return null;
+  const [yy,mm] = ls[0].split('-').map(Number);
+  return yy*12+(mm-1);
+}
+function prevMonthBlocked(sid, y, m){
+  if(state.viewMode==='teacher') return false;
+  const e = earliestMonthIdx(sid);
+  return e!==null && (y*12+m) <= e;
+}
+function nextMonthBlocked(sid, y, m){
+  if(state.viewMode==='teacher') return false;
+  const ds = [];
+  state.lessons.forEach(l=>{ if(l.studentId===sid && l.date) ds.push(l.date); });
+  state.schedules.forEach(x=>{ if(x.studentId===sid && !x.isCredit && x.date) ds.push(x.date); });
+  const now = new Date();
+  let last = now.getFullYear()*12+now.getMonth();
+  ds.forEach(d=>{ const [yy,mm]=d.split('-').map(Number); last = Math.max(last, yy*12+(mm-1)); });
+  return (y*12+m) >= last;
+}
 function studentLessons(sid){ return state.lessons.filter(l=>l.studentId===sid).sort((a,b)=>a.date.localeCompare(b.date)); }
 function lessonNumberMap(sid){
   const list = studentLessons(sid);
@@ -1217,9 +1238,9 @@ function renderStudentView(){
 
     <div class="card">
       <div class="cal-head">
-        <div class="cal-nav"><button id="stuPrev">‹</button></div>
+        <div class="cal-nav"><button id="stuPrev" ${prevMonthBlocked(s.id,y,m)?'disabled style="opacity:0.3;"':''}>‹</button></div>
         <h2>${y} 年 ${m+1} 月</h2>
-        <div class="cal-nav"><button id="stuNext">›</button></div>
+        <div class="cal-nav"><button id="stuNext" ${nextMonthBlocked(s.id,y,m)?'disabled style="opacity:0.3;"':''}>›</button></div>
       </div>
       <div class="grid7">${dowNames.map(d=>`<div class="dow">${d}</div>`).join('')}</div>
       <div class="grid7" id="stuCalGrid"></div>
@@ -1253,8 +1274,8 @@ function renderStudentView(){
     ${siteFooterHtml()}
   `;
 
-  $('#stuPrev').addEventListener('click', ()=>{ state.cursor = new Date(y, m-1, 1); renderStudentView(); });
-  $('#stuNext').addEventListener('click', ()=>{ state.cursor = new Date(y, m+1, 1); renderStudentView(); });
+  $('#stuPrev').addEventListener('click', ()=>{ if(prevMonthBlocked(s.id,y,m)) return; state.cursor = new Date(y, m-1, 1); renderStudentView(); });
+  $('#stuNext').addEventListener('click', ()=>{ if(nextMonthBlocked(s.id,y,m)) return; state.cursor = new Date(y, m+1, 1); renderStudentView(); });
 
   const firstDow = new Date(y, m, 1).getDay();
   const daysInMonth = new Date(y, m+1, 0).getDate();
@@ -3323,9 +3344,9 @@ function renderMain(){
 
     <div class="card">
       <div class="cal-head">
-        <div class="cal-nav"><button id="prevMonth">‹</button></div>
+        <div class="cal-nav"><button id="prevMonth" ${prevMonthBlocked(s.id,state.cursor.getFullYear(),state.cursor.getMonth())?'disabled style="opacity:0.3;"':''}>‹</button></div>
         <h2 id="monthLabel">${state.cursor.getFullYear()} 年 ${state.cursor.getMonth()+1} 月</h2>
-        <div class="cal-nav"><button id="nextMonth">›</button></div>
+        <div class="cal-nav"><button id="nextMonth" ${nextMonthBlocked(s.id,state.cursor.getFullYear(),state.cursor.getMonth())?'disabled style="opacity:0.3;"':''}>›</button></div>
       </div>
       <div class="grid7" id="dowRow">${dowNames.map(d=>`<div class="dow">${d}</div>`).join('')}</div>
       <div class="grid7" id="calGrid"></div>
@@ -3452,8 +3473,8 @@ function renderMain(){
     area.querySelectorAll('[data-edit-exam]').forEach(btn=> btn.addEventListener('click', ()=> editExamItem(btn.dataset.editExam)));
     area.querySelectorAll('[data-del-exam]').forEach(btn=> btn.addEventListener('click', ()=> deleteExamItem(btn.dataset.delExam)));
   }
-  $('#prevMonth').addEventListener('click', ()=>{ state.cursor = new Date(state.cursor.getFullYear(), state.cursor.getMonth()-1, 1); render(); });
-  $('#nextMonth').addEventListener('click', ()=>{ state.cursor = new Date(state.cursor.getFullYear(), state.cursor.getMonth()+1, 1); render(); });
+  $('#prevMonth').addEventListener('click', ()=>{ if(prevMonthBlocked(s.id,state.cursor.getFullYear(),state.cursor.getMonth())) return; state.cursor = new Date(state.cursor.getFullYear(), state.cursor.getMonth()-1, 1); render(); });
+  $('#nextMonth').addEventListener('click', ()=>{ if(nextMonthBlocked(s.id,state.cursor.getFullYear(),state.cursor.getMonth())) return; state.cursor = new Date(state.cursor.getFullYear(), state.cursor.getMonth()+1, 1); render(); });
 
   renderCalendar(s.id);
   renderList(s.id);
