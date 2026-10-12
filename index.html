@@ -787,7 +787,7 @@ function generateMonthlySummaryText(sid, year, month){
   const hoursLabel = Number.isInteger(totalHours) ? totalHours : totalHours.toFixed(1);
   lines.push(`共${hoursLabel}小時（*${rate||0}）`);
   if(feeInfo.milestone.hit){
-    lines.push(`🏷️累積上課時數達${feeInfo.milestone.milestone}小時，本月享${discountZheLabel()}優惠（折扣$${feeInfo.discountAmt}，原價$${feeInfo.baseFee}）`);
+    lines.push(`🏷️累積上課時數達${feeInfo.milestone.milestone}小時，本月享${discountZheLabel()}優惠（折扣$${feeInfo.discountAmt}，原價$${feeInfo.baseFee}），感謝家長的信任與支持🌷`);
   }
   lines.push(`📝${year}年${month+1}月上課費用為${fee!==null ? fee : 0}元`);
   return lines.join('\n');
@@ -3338,7 +3338,7 @@ function renderMain(){
       </div>
       ${feeInfo.deferredIn>0 ? `<p style="font-size:11px;color:#E8A33D;margin:8px 0 0;">＋含上月遞延 ${feeInfo.deferredIn}小時</p>` : ''}
       ${feeInfo.deferredIn<0 ? `<p style="font-size:11px;color:#E8A33D;margin:8px 0 0;">－上月退還 ${Math.abs(feeInfo.deferredIn)}小時</p>` : ''}
-      ${feeInfo.milestone.hit ? `<p style="font-size:12px;color:var(--teal);margin:8px 0 0;font-weight:600;">🏷️ 累積上課時數達${feeInfo.milestone.milestone}小時，本月學費享${discountZheLabel()}優惠（折扣 $${feeInfo.discountAmt.toLocaleString()}）</p>` : ''}
+      ${feeInfo.milestone.hit ? `<p style="font-size:12px;color:var(--teal);margin:8px 0 0;font-weight:600;">🏷️ 累積上課時數達${feeInfo.milestone.milestone}小時，本月學費享${discountZheLabel()}優惠（折扣 $${feeInfo.discountAmt.toLocaleString()}），感謝家長的信任與支持🌷</p>` : ''}
       <button id="payBadge" class="pay-badge ${paid?'paid':'unpaid'} ${state.viewMode==='teacher'?'clickable':''}">${paid ? '✅ 學費已收' : '⏳ 學費未收'}</button>
     </div>
 
