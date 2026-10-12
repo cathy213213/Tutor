@@ -91,10 +91,13 @@
   .cal-nav button{width:30px;height:30px;border-radius:8px;border:1px solid var(--line);background:#fff;cursor:pointer;font-size:15px;color:var(--ink-soft);}
   .cal-nav button:hover{background:var(--paper);}
 
-  .grid7{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;}
+  .grid7{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px;}
   .dow{text-align:center;font-size:12px;color:var(--ink-soft);padding-bottom:6px;}
   .day{position:relative;aspect-ratio:1/1;border-radius:8px;border:1px solid transparent;display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:13px;color:var(--ink);}
   .day.pad{visibility:hidden;}
+  .day.has-time{overflow:hidden;gap:0;}
+  .day.has-time .dot-row{margin-top:1px;}
+  .day-time{display:block;font-size:9px;line-height:1.1;color:var(--ink-soft);text-align:center;margin-top:1px;white-space:nowrap;}
   .day.today{border-color:var(--red);}
   .day.has-schedule{background:var(--teal-soft);}
   .day.has-lesson{cursor:pointer;background:var(--red-soft);}
@@ -758,7 +761,7 @@ function generateMonthlySummaryText(sid, year, month){
   const hoursLabel = Number.isInteger(totalHours) ? totalHours : totalHours.toFixed(1);
   lines.push(`共${hoursLabel}小時（*${rate||0}）`);
   if(feeInfo.milestone.hit){
-    lines.push(`🏷️累積上課時數達${feeInfo.milestone.milestone}小時，本月享9折優惠（折扣$${feeInfo.discountAmt}，原價$${feeInfo.baseFee}）`);
+    lines.push(`🏷️累積上課時數達${feeInfo.milestone.milestone}小時，本月享${discountZheLabel()}優惠（折扣$${feeInfo.discountAmt}，原價$${feeInfo.baseFee}）`);
   }
   lines.push(`📝${year}年${month+1}月上課費用為${fee!==null ? fee : 0}元`);
   return lines.join('\n');
@@ -796,6 +799,14 @@ function occurrencesForDate(sid, dateKey){
   return state.schedules.filter(s=>s.studentId===sid && s.date===dateKey)
     .map(s=>({ ...s, time: formatTime(s.hour, s.minute) }))
     .sort((a,b)=> a.time.localeCompare(b.time));
+}
+function dayTimesHtml(sid, key){
+  const occ = occurrencesForDate(sid, key).filter(o=>!o.isCredit);
+  if(!occ.length) return '';
+  return occ.map(o=>{
+    const [a,b] = formatTimeRange(o.hour, o.minute, o.hours).split('-');
+    return `<span class="day-time">${a}-<br>${b||''}</span>`;
+  }).join('');
 }
 function scheduledDatesInMonth(sid, year, month){
   const prefix = `${year}-${pad(month+1)}-`;
@@ -862,6 +873,12 @@ function cumulativeHoursThrough(sid, year, month){
   const cutoff = `${year}-${pad(month+1)}-31`;
   return state.schedules.filter(x=> x.studentId===sid && x.date<=cutoff)
     .reduce((sum,sc)=> sum+(sc.hours||0), 0);
+}
+function discountZheLabel(){
+  const pct = (state.profile && state.profile.discountPercent!==undefined) ? Number(state.profile.discountPercent) : 10;
+  const z = Math.round((100-pct)*100)/100;
+  if(z>=100) return '優惠';
+  return (z%10===0 ? (z/10) : z) + '折';
 }
 function milestoneDiscountForMonth(sid, year, month){
   const prof = state.profile || {};
@@ -1251,7 +1268,9 @@ function renderStudentView(){
     const dot = hasContent ? '<span class="dot"></span>' : (hasSchedule ? '<span class="dot dot-schedule"></span>' : '');
     const examTypes = examTypesForDate(s.id, key);
     const examDots = examTypes.map(()=>`<span class="dot dot-exam"></span>`).join('');
-    calHtml += `<div class="${classes.join(' ')}" data-date="${key}"><span>${d}</span><span class="dot-row">${dot}${examDots}</span></div>`;
+    const tm = dayTimesHtml(s.id, key);
+    if(tm) classes.push('has-time');
+    calHtml += `<div class="${classes.join(' ')}" data-date="${key}"><span>${d}</span>${tm}<span class="dot-row">${dot}${examDots}</span></div>`;
   }
   $('#stuCalGrid').innerHTML = calHtml;
   $('#stuCalGrid').querySelectorAll('.day.clickable').forEach(day=>{
@@ -3232,7 +3251,7 @@ function renderMain(){
       </div>
       ${feeInfo.deferredIn>0 ? `<p style="font-size:11px;color:#E8A33D;margin:8px 0 0;">＋含上月遞延 ${feeInfo.deferredIn}小時</p>` : ''}
       ${feeInfo.deferredIn<0 ? `<p style="font-size:11px;color:#E8A33D;margin:8px 0 0;">－上月退還 ${Math.abs(feeInfo.deferredIn)}小時</p>` : ''}
-      ${feeInfo.milestone.hit ? `<p style="font-size:12px;color:var(--teal);margin:8px 0 0;font-weight:600;">🏷️ 累積上課時數達${feeInfo.milestone.milestone}小時，本月學費享9折優惠（折扣 $${feeInfo.discountAmt.toLocaleString()}）</p>` : ''}
+      ${feeInfo.milestone.hit ? `<p style="font-size:12px;color:var(--teal);margin:8px 0 0;font-weight:600;">🏷️ 累積上課時數達${feeInfo.milestone.milestone}小時，本月學費享${discountZheLabel()}優惠（折扣 $${feeInfo.discountAmt.toLocaleString()}）</p>` : ''}
       <button id="payBadge" class="pay-badge ${paid?'paid':'unpaid'} ${state.viewMode==='teacher'?'clickable':''}">${paid ? '✅ 學費已收' : '⏳ 學費未收'}</button>
     </div>
 
@@ -3399,7 +3418,9 @@ function renderCalendar(sid){
     const dot = hasContent ? '<span class="dot"></span>' : (hasSchedule ? '<span class="dot dot-schedule"></span>' : '');
     const examTypes = examTypesForDate(sid, key);
     const examDots = examTypes.map(()=>`<span class="dot dot-exam"></span>`).join('');
-    html += `<div class="${classes.join(' ')}" data-date="${key}"><span>${d}</span><span class="dot-row">${dot}${examDots}</span></div>`;
+    const tm = dayTimesHtml(sid, key);
+    if(tm) classes.push('has-time');
+    html += `<div class="${classes.join(' ')}" data-date="${key}"><span>${d}</span>${tm}<span class="dot-row">${dot}${examDots}</span></div>`;
   }
   $('#calGrid').innerHTML = html;
 
