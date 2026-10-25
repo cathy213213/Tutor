@@ -445,7 +445,7 @@ const DEFAULT_INCOME_HISTORY = [
   { month:'2026-03', income:81800, hours:88 },
   { month:'2026-04', income:81150, hours:88 },
   { month:'2026-05', income:79000, hours:86 },
-  { month:'2026-06', income:82000, hours:80 },
+  { month:'2026-06', income:92000, hours:80 },
   { month:'2026-07', income:86600, hours:91 },
   { month:'2026-08', income:86500, hours:94 }
 ];
@@ -562,6 +562,7 @@ async function loadData(){
     if(p.classPhotos===undefined){ p.classPhotos = []; profileChanged = true; }
     if(p.guidePhotos===undefined){ p.guidePhotos = []; profileChanged = true; }
     if(p.incomeHistory===undefined){ p.incomeHistory = DEFAULT_INCOME_HISTORY.map(x=>({...x})); profileChanged = true; }
+    else { const j = p.incomeHistory.find(x=>x.month==='2026-06'); if(j && j.income===82000){ j.income = 92000; profileChanged = true; } }
     if(p.appTagline===undefined){ p.appTagline = DEFAULT_APP_TAGLINE; profileChanged = true; }
     if(p.aboutTagline===undefined){ p.aboutTagline = DEFAULT_ABOUT_TAGLINE; profileChanged = true; }
     if(p.email===undefined){ p.email = ''; profileChanged = true; }
