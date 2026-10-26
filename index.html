@@ -4025,8 +4025,14 @@ function renderIncomeChart(){
   const yearExtra = data.reduce((t,d)=>t+d.extra,0);
   const yearHours = data.reduce((t,d)=>t+d.hours,0);
   const yearExtraHours = data.reduce((t,d)=>t+d.extraHours,0);
-  const withIncome = data.filter(d=>d.total>0);
-  const growth = (withIncome.length>=2 && withIncome[0].total>0) ? withIncome[withIncome.length-1].total/withIncome[0].total : null;
+  const completeMonths = data.filter(d=> !(d.y===now.getFullYear() && d.m===now.getMonth()) && (d.y<now.getFullYear() || d.m<now.getMonth()));
+  let growth = null;
+  if(completeMonths.length>=6){
+    const avg = arr => arr.reduce((t,x)=>t+x.total,0)/arr.length;
+    const startAvg = avg(completeMonths.slice(0,3));
+    const recentAvg = avg(completeMonths.slice(-3));
+    if(startAvg>0) growth = recentAvg/startAvg;
+  }
   const isCurrent = (d)=> d.y===now.getFullYear() && d.m===now.getMonth();
   const fmtH = v => Number.isInteger(v) ? v : v.toFixed(1);
 
@@ -4093,7 +4099,7 @@ function renderIncomeChart(){
           <div style="font-size:22px;font-weight:700;margin-top:4px;">${growth!==null ? growth.toFixed(1)+' 倍' : '—'}</div>
         </div>
       </div>
-      <div style="font-size:12px;color:var(--ink-soft);margin-top:8px;line-height:1.7;">其中家教 ${yearTutor.toLocaleString()}${yearExtra ? `・其他收入 ${yearExtra.toLocaleString()}` : ''}<br>全年家教共 ${fmtH(yearHours)} 小時${yearExtraHours ? `・其他工作 ${fmtH(yearExtraHours)} 小時` : ''}・累計每年 1 月重新計算</div>
+      <div style="font-size:12px;color:var(--ink-soft);margin-top:8px;line-height:1.7;">其中家教 ${yearTutor.toLocaleString()}${yearExtra ? `・其他收入 ${yearExtra.toLocaleString()}` : ''}<br>${growth!==null ? '成長＝最近 3 個完整月份平均 ÷ 年初前 3 個月平均' : '成長需要 6 個完整月份以上的資料才會顯示'}<br>全年家教共 ${fmtH(yearHours)} 小時${yearExtraHours ? `・其他工作 ${fmtH(yearExtraHours)} 小時` : ''}・累計每年 1 月重新計算</div>
     </div>
     <div class="card">
       <h3 class="section-title">📊 每月總收入</h3>
