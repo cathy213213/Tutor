@@ -444,6 +444,14 @@ const EXAM_TYPES = {
 };
 const DEFAULT_APP_TAGLINE = '希望孩子的數學能夠越來越穩定進步💪🏻讓我們一起努力吧🌷';
 const DEFAULT_INCOME_HISTORY = [
+  { month:'2025-05', income:8800, hours:8, students:1 },
+  { month:'2025-06', income:11550, hours:10.5, students:1 },
+  { month:'2025-07', income:39700, hours:44, students:5 },
+  { month:'2025-08', income:42500, hours:44.5, students:6 },
+  { month:'2025-09', income:55850, hours:66, students:9 },
+  { month:'2025-10', income:49650, hours:61, students:8 },
+  { month:'2025-11', income:60300, extra:19999, hours:62.5, extraHours:15.5, students:8 },
+  { month:'2025-12', income:61750, extra:21999, hours:73.5, extraHours:9 },
   { month:'2026-01', income:60050, hours:67 },
   { month:'2026-02', income:59650, hours:67.5 },
   { month:'2026-03', income:81800, hours:88 },
@@ -565,8 +573,9 @@ async function loadData(){
     if(p.testimonials===undefined){ p.testimonials = []; profileChanged = true; }
     if(p.classPhotos===undefined){ p.classPhotos = []; profileChanged = true; }
     if(p.guidePhotos===undefined){ p.guidePhotos = []; profileChanged = true; }
-    if(p.incomeHistory===undefined){ p.incomeHistory = DEFAULT_INCOME_HISTORY.map(x=>({...x})); profileChanged = true; }
-    else { const j = p.incomeHistory.find(x=>x.month==='2026-06'); if(j && j.extra===undefined && (j.income===82000 || j.income===92000)){ j.income = 82000; j.extra = 10000; profileChanged = true; } }
+    if(p.incomeHistory===undefined){ p.incomeHistory = []; }
+    DEFAULT_INCOME_HISTORY.forEach(d=>{ if(!p.incomeHistory.some(x=>x.month===d.month)){ p.incomeHistory.push({...d}); profileChanged = true; } });
+    { const j = p.incomeHistory.find(x=>x.month==='2026-06'); if(j && j.extra===undefined && (j.income===82000 || j.income===92000)){ j.income = 82000; j.extra = 10000; profileChanged = true; } }
     if(p.appTagline===undefined){ p.appTagline = DEFAULT_APP_TAGLINE; profileChanged = true; }
     if(p.aboutTagline===undefined){ p.aboutTagline = DEFAULT_ABOUT_TAGLINE; profileChanged = true; }
     if(p.email===undefined){ p.email = ''; profileChanged = true; }
@@ -3931,7 +3940,8 @@ function pickStudentForPreview(mode){
   });
 }
 
-const CHART_START_YEAR = 2026;
+const CHART_START_YEAR = 2025;
+const CHART_START_MONTH = 4; // May 2025 (0-indexed)
 let incomeYearView = null;
 
 function incomeDataForMonth(y, m){
@@ -3939,19 +3949,21 @@ function incomeDataForMonth(y, m){
   const hasApp = state.schedules.some(sc=> sc.date.startsWith(prefix+'-') && !sc.isCredit);
   const h = ((state.profile && state.profile.incomeHistory) || []).find(x=>x.month===prefix);
   const extra = h ? (Number(h.extra)||0) : 0;
+  const extraHours = h ? (Number(h.extraHours)||0) : 0;
   if(hasApp){
     const summary = allStudentsMonthSummary(y,m);
-    return { y, m, income: summary.reduce((sum,x)=> sum+(x.fee||0), 0), extra, hours: summary.reduce((sum,x)=> sum+x.hours, 0), students: summary.filter(x=>x.hours>0).length, manual:false };
+    return { y, m, income: summary.reduce((sum,x)=> sum+(x.fee||0), 0), extra, hours: summary.reduce((sum,x)=> sum+x.hours, 0), students: summary.filter(x=>x.hours>0).length, extraHours, manual:false };
   }
-  if(h) return { y, m, income: Number(h.income)||0, extra, hours: Number(h.hours)||0, students: (h.students!==undefined && h.students!=='' ) ? Number(h.students) : null, manual:true };
-  return { y, m, income:0, extra:0, hours:0, students:null, manual:false };
+  if(h) return { y, m, income: Number(h.income)||0, extra, hours: Number(h.hours)||0, students: (h.students!==undefined && h.students!=='' ) ? Number(h.students) : null, extraHours, manual:true };
+  return { y, m, income:0, extra:0, hours:0, students:null, extraHours:0, manual:false };
 }
 function editIncomeMonth(y, m){
   const d = incomeDataForMonth(y, m);
   const prefix = `${y}-${pad(m+1)}`;
   showModal(`
     <h3>${y} 年 ${m+1} 月收入紀錄</h3>
-    <div class="field"><label>其他收入（副業等，元）</label><input type="number" id="m-extra" value="${d.extra||''}" placeholder="0"></div>
+    <div class="field"><label>其他收入（教材等副業，元）</label><input type="number" id="m-extra" value="${d.extra||''}" placeholder="0"></div>
+    <div class="field"><label>其他工作時數（選填）</label><input type="number" step="0.5" id="m-exh" value="${d.extraHours||''}"></div>
     ${d.manual || (!d.income && !d.hours) ? `
       <div class="field"><label>家教收入（元）</label><input type="number" id="m-inc" value="${d.income||''}"></div>
       <div class="field"><label>家教上課時數</label><input type="number" step="0.5" id="m-hrs" value="${d.hours||''}"></div>
@@ -3968,6 +3980,7 @@ function editIncomeMonth(y, m){
     let rec = p.incomeHistory.find(x=>x.month===prefix);
     if(!rec){ rec = { month: prefix }; p.incomeHistory.push(rec); }
     rec.extra = Number($('#m-extra').value) || 0;
+    rec.extraHours = Number($('#m-exh').value) || 0;
     if($('#m-inc')){
       rec.income = Number($('#m-inc').value) || 0;
       rec.hours = Number($('#m-hrs').value) || 0;
@@ -3993,7 +4006,7 @@ function renderIncomeChart(){
     if(y>maxY || (y===maxY && (m-1)>maxM)){ maxY=y; maxM=m-1; }
   });
   const all = [];
-  let cy = CHART_START_YEAR, cm = 0;
+  let cy = CHART_START_YEAR, cm = CHART_START_MONTH;
   while(cy < maxY || (cy===maxY && cm<=maxM)){
     const d = incomeDataForMonth(cy, cm);
     d.total = d.income + d.extra;
@@ -4011,6 +4024,7 @@ function renderIncomeChart(){
   const yearTutor = data.reduce((t,d)=>t+d.income,0);
   const yearExtra = data.reduce((t,d)=>t+d.extra,0);
   const yearHours = data.reduce((t,d)=>t+d.hours,0);
+  const yearExtraHours = data.reduce((t,d)=>t+d.extraHours,0);
   const withIncome = data.filter(d=>d.total>0);
   const growth = (withIncome.length>=2 && withIncome[0].total>0) ? withIncome[withIncome.length-1].total/withIncome[0].total : null;
   const isCurrent = (d)=> d.y===now.getFullYear() && d.m===now.getMonth();
@@ -4031,14 +4045,14 @@ function renderIncomeChart(){
     svg += `<text x="${L-6}" y="${y+3.5}" text-anchor="end" font-size="9.5" fill="#7B8594">${t/1000}k</text>`;
   });
   data.forEach((d,i)=>{
-    const x = L + slot*i + (slot-barW)/2;
+    const x = L + slot*d.m + (slot-barW)/2;
     const hT = (d.income/yMax)*plotH, hE = (d.extra/yMax)*plotH;
     svg += `<rect x="${x}" y="${T+plotH-hT}" width="${barW}" height="${Math.max(0,hT)}" rx="2" fill="${isCurrent(d)?'#1F5247':'#2F6F62'}"/>`;
     if(d.extra>0) svg += `<rect x="${x}" y="${T+plotH-hT-hE}" width="${barW}" height="${hE}" rx="2" fill="#F0B35A"/>`;
     if(d.total>0) svg += `<text x="${x+barW/2}" y="${T+plotH-hT-hE-3}" text-anchor="middle" font-size="8" fill="#4A5563">${Math.round(d.total/1000)}k</text>`;
     svg += `<text x="${x+barW/2}" y="${H-B+14}" text-anchor="middle" font-size="9.5" fill="${isCurrent(d)?'#1B2430':'#7B8594'}" font-weight="${isCurrent(d)?'700':'400'}">${d.m+1}</text>`;
   });
-  const pts = data.map((d,i)=> d.ma===null ? null : [L+slot*i+slot/2, yOf(d.ma)]).filter(Boolean);
+  const pts = data.map((d,i)=> d.ma===null ? null : [L+slot*d.m+slot/2, yOf(d.ma)]).filter(Boolean);
   if(pts.length>1){
     svg += `<polyline points="${pts.map(p=>p.join(',')).join(' ')}" fill="none" stroke="#E8803D" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`;
   }
@@ -4079,7 +4093,7 @@ function renderIncomeChart(){
           <div style="font-size:22px;font-weight:700;margin-top:4px;">${growth!==null ? growth.toFixed(1)+' 倍' : '—'}</div>
         </div>
       </div>
-      <div style="font-size:12px;color:var(--ink-soft);margin-top:8px;line-height:1.7;">其中家教 ${yearTutor.toLocaleString()}${yearExtra ? `・其他收入 ${yearExtra.toLocaleString()}` : ''}<br>全年家教共 ${fmtH(yearHours)} 小時・累計每年 1 月重新計算</div>
+      <div style="font-size:12px;color:var(--ink-soft);margin-top:8px;line-height:1.7;">其中家教 ${yearTutor.toLocaleString()}${yearExtra ? `・其他收入 ${yearExtra.toLocaleString()}` : ''}<br>全年家教共 ${fmtH(yearHours)} 小時${yearExtraHours ? `・其他工作 ${fmtH(yearExtraHours)} 小時` : ''}・累計每年 1 月重新計算</div>
     </div>
     <div class="card">
       <h3 class="section-title">📊 每月總收入</h3>
@@ -4097,7 +4111,7 @@ function renderIncomeChart(){
     </div>
     <div class="card">
       <h3 class="section-title">🧮 每月明細</h3>
-      <div style="font-size:12px;color:var(--ink-soft);margin-bottom:8px;">平均時薪＝家教收入 ÷ 時數。點月份可以輸入其他收入（副業等）。</div>
+      <div style="font-size:12px;color:var(--ink-soft);margin-bottom:8px;">平均時薪＝家教收入 ÷ 時數。點月份可以輸入其他收入（教材等副業）。</div>
       <table class="inc-table">
         <thead><tr><th>月份</th><th>家教</th><th>其他</th><th>時數</th><th>時薪</th><th>學生</th></tr></thead>
         <tbody>${rowsHtml}</tbody>
