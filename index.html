@@ -440,7 +440,10 @@ const EXAM_TYPES = {
   mid1: { label:'第一次期中考' },
   mid2: { label:'第二次期中考' },
   final: { label:'期末考' },
-  mock: { label:'模擬考' }
+  mock: { label:'模擬考' },
+  gsat: { label:'學測' },
+  ast: { label:'分科測驗' },
+  vtest: { label:'統測' }
 };
 const DEFAULT_APP_TAGLINE = '希望孩子的數學能夠越來越穩定進步💪🏻讓我們一起努力吧🌷';
 const DEFAULT_INCOME_HISTORY = [
@@ -3127,13 +3130,16 @@ function deleteSchedule(id){
 
 function examModal(sid, existing){
   const e = existing || { type:'mid1', date: toKey(new Date()), endDate: toKey(new Date()) };
+  const isCustomType = !EXAM_TYPES[e.type];
   showModal(`
     <h3>${existing?'編輯考試日期':'新增考試日期'}</h3>
     <div class="field"><label>類型</label>
       <select id="m-type">
         ${Object.keys(EXAM_TYPES).map(k=>`<option value="${k}" ${e.type===k?'selected':''}>${EXAM_TYPES[k].label}</option>`).join('')}
+        <option value="__custom" ${isCustomType?'selected':''}>其他（自己填）</option>
       </select>
     </div>
+    <div class="field" id="m-custom-wrap" style="${isCustomType?'':'display:none;'}"><label>考試名稱</label><input type="text" id="m-custom" value="${isCustomType?escapeHtml(e.type):''}" placeholder="例如：複習考、校內小考"></div>
     <div class="form-row">
       <div class="field"><label>開始日期</label><input type="date" id="m-date" value="${e.date}"></div>
       <div class="field"><label>結束日期</label><input type="date" id="m-endDate" value="${e.endDate||e.date}"></div>
@@ -3145,12 +3151,15 @@ function examModal(sid, existing){
     </div>
   `);
   $('#m-cancel').addEventListener('click', closeModal);
+  $('#m-type').addEventListener('change', ()=>{ $('#m-custom-wrap').style.display = $('#m-type').value==='__custom' ? '' : 'none'; });
   $('#m-save').addEventListener('click', async ()=>{
     const date = $('#m-date').value;
     if(!date) return;
+    let typeVal = $('#m-type').value;
+    if(typeVal==='__custom'){ typeVal = $('#m-custom').value.trim(); if(!typeVal){ $('#m-custom').focus(); return; } }
     let endDate = $('#m-endDate').value || date;
     if(endDate < date) endDate = date;
-    const data = { id: existing ? existing.id : uid(), studentId: sid, type: $('#m-type').value, date, endDate };
+    const data = { id: existing ? existing.id : uid(), studentId: sid, type: typeVal, date, endDate };
     if(existing){
       const idx = state.examDates.findIndex(x=>x.id===existing.id);
       state.examDates[idx] = data;
