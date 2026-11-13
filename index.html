@@ -2414,7 +2414,7 @@ function renderOverview(){
     if(list.length) classes.push('clickable');
     html += `<div class="${classes.join(' ')}" data-date="${key}">
       <span class="ov-num">${d}</span>
-      ${list.map(x=>`<span class="ov-entry" style="background:${studentColor(x.sid).bg};border-color:${studentColor(x.sid).border};">${escapeHtml(x.studentName)}${x.time}</span>`).join('')}
+      ${list.map(x=>`<span class="ov-entry ov-entry2" style="background:${studentColor(x.sid).bg};border-color:${studentColor(x.sid).border};">${String(x.time).split('-')[0]}<br>${escapeHtml(x.studentName)}</span>`).join('')}
     </div>`;
   }
   $('#ovCalGrid').innerHTML = html;
