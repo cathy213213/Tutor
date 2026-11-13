@@ -132,7 +132,7 @@
   .ov-day.pad{visibility:hidden;}
   .ov-day.today{border-color:var(--red);}
   .ov-day .ov-num{font-size:11px;font-weight:700;color:var(--ink);margin-bottom:2px;}
-  .ov-day .ov-entry{font-size:9.5px;line-height:1.35;color:var(--teal);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;width:100%;}
+  .ov-day .ov-entry{font-size:9.5px;line-height:1.35;color:var(--ink);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;width:100%;box-sizing:border-box;border:1px solid transparent;border-radius:4px;padding:1px 2px;margin-bottom:2px;}
   .ov-day .ov-entry2{white-space:normal;margin-bottom:2px;}
   .pub-day{border-radius:8px;border:1px solid transparent;padding:4px 3px;min-height:56px;display:flex;flex-direction:column;align-items:flex-start;overflow:hidden;cursor:default;}
   .pub-day.has-busy{cursor:pointer;}
@@ -2414,7 +2414,7 @@ function renderOverview(){
     if(list.length) classes.push('clickable');
     html += `<div class="${classes.join(' ')}" data-date="${key}">
       <span class="ov-num">${d}</span>
-      ${list.map(x=>`<span class="ov-entry" style="color:${studentColor(x.sid).text};">${escapeHtml(x.studentName)}${x.time}</span>`).join('')}
+      ${list.map(x=>`<span class="ov-entry" style="background:${studentColor(x.sid).bg};border-color:${studentColor(x.sid).border};">${escapeHtml(x.studentName)}${x.time}</span>`).join('')}
     </div>`;
   }
   $('#ovCalGrid').innerHTML = html;
@@ -2669,7 +2669,7 @@ function renderMyCalendarPage(){
     if(list.length) classes.push('clickable');
     calHtml += `<div class="${classes.join(' ')}" data-date="${key}">
       <span class="ov-num">${d}</span>
-      ${list.map(e=>`<span class="ov-entry ov-entry2" style="color:${studentColor(e.sid).text};">${toKoreaTimeRange(e.hour,e.minute,e.hours).split('-')[0]}<br>${escapeHtml(e.studentName)}</span>`).join('')}
+      ${list.map(e=>`<span class="ov-entry ov-entry2" style="background:${studentColor(e.sid).bg};border-color:${studentColor(e.sid).border};">${toKoreaTimeRange(e.hour,e.minute,e.hours).split('-')[0]}<br>${escapeHtml(e.studentName)}</span>`).join('')}
     </div>`;
   }
   $('#myCalGrid').innerHTML = calHtml;
